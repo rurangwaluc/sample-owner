@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  @apply bg-stone-100 text-stone-900 antialiased transition-colors duration-200;
+}
+
+html.dark body {
+  @apply bg-stone-950 text-stone-100;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  @apply bg-stone-900 text-white;
+}
+
+html.dark ::selection {
+  @apply bg-stone-200 text-stone-950;
+}
