@@ -1,22 +1,33 @@
 import { apiFetch } from "./api";
 
 export async function getMe() {
-  // ✅ choose ONE based on backend
-  return apiFetch("/auth/me", { method: "GET" }); // or "/auth/me"
+  return apiFetch("/auth/me", {
+    method: "GET",
+    credentials: "include",
+  });
 }
 
 export async function login(email, password) {
   return apiFetch("/auth/login", {
     method: "POST",
-    body: { email, password },
+    credentials: "include",
+    body: {
+      email: String(email || "")
+        .trim()
+        .toLowerCase(),
+      password: String(password || ""),
+    },
   });
 }
 
 export async function logout() {
-  // if your backend has it; otherwise just redirect client-side
   try {
-    await apiFetch("/auth/logout", { method: "POST", body: {} });
+    return await apiFetch("/auth/logout", {
+      method: "POST",
+      credentials: "include",
+      body: {},
+    });
   } catch {
-    // ignore
+    return null;
   }
 }

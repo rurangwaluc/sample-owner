@@ -1,45 +1,75 @@
 function normalizeBase(v) {
   const s = String(v || "").trim();
   if (!s) return "";
-  return s.endsWith("/") ? s.slice(0, -1) : s;
+  return s.replace(/\/+$/, "");
 }
 
-const BASE = normalizeBase(process.env.NEXT_PUBLIC_API_BASE);
+const BASE = normalizeBase(
+  process.env.NEXT_PUBLIC_API_BASE ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL,
+);
 
 async function readBodySafe(res) {
   const ct = res.headers.get("content-type") || "";
-  if (ct.includes("application/json")) return res.json();
-  const text = await res.text();
-  return { error: text };
+
+  if (ct.includes("application/json")) {
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  try {
+    const text = await res.text();
+    return { error: text };
+  } catch {
+    return { error: "Failed to read response body" };
+  }
 }
 
 export async function apiFetch(path, opts = {}) {
   if (!BASE) {
     throw new Error(
-      "Missing NEXT_PUBLIC_API_BASE in .env.local (restart dev server after setting it).",
+      "Missing NEXT_PUBLIC_API_BASE (or NEXT_PUBLIC_API_URL) in environment. Restart the dev server after setting it.",
     );
   }
 
-  const url = `${BASE}${path}`;
+  const normalizedPath = String(path || "").startsWith("/")
+    ? String(path)
+    : `/${String(path || "")}`;
+
+  const url = `${BASE}${normalizedPath}`;
+  const method = String(opts.method || "GET").toUpperCase();
   const hasBody = opts.body !== undefined && opts.body !== null;
 
-  // ✅ Only set JSON header if we actually send a JSON body
+  const isFormData =
+    typeof FormData !== "undefined" && opts.body instanceof FormData;
+
   const headers = {
     ...(opts.headers || {}),
-    ...(hasBody ? { "Content-Type": "application/json" } : {}),
+    ...(!isFormData && hasBody ? { "Content-Type": "application/json" } : {}),
   };
 
   const res = await fetch(url, {
-    method: opts.method || "GET",
+    method,
     headers,
     credentials: "include",
-    body: hasBody ? JSON.stringify(opts.body) : undefined,
+    body: hasBody
+      ? isFormData
+        ? opts.body
+        : JSON.stringify(opts.body)
+      : undefined,
+    cache: "no-store",
   });
 
   const data = await readBodySafe(res);
 
   if (!res.ok) {
-    const err = new Error(data?.error || `Request failed (${res.status})`);
+    const err = new Error(
+      data?.error || data?.message || `Request failed (${res.status})`,
+    );
     err.status = res.status;
     err.data = data;
     err.url = url;
@@ -48,3 +78,5 @@ export async function apiFetch(path, opts = {}) {
 
   return data;
 }
+
+export { BASE as API_BASE };
