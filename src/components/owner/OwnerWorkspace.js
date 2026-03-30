@@ -104,7 +104,7 @@ export default function OwnerWorkspace({
       inventory: {
         title: "Inventory",
         subtitle:
-          "Track and inspect cross-branch stock visibility with owner-level control.",
+          "Track and inspect cross-branch bag stock visibility with owner-level control.",
       },
       arrivals: {
         title: "Inventory Arrivals",
@@ -114,11 +114,11 @@ export default function OwnerWorkspace({
       products: {
         title: "Products",
         subtitle:
-          "Manage catalog structure for hardware, apparel, PPE, and mixed stock.",
+          "Manage polypropylene bag product records, units, pricing, and stock rules.",
       },
       sales: {
         title: "Sales",
-        subtitle: "Monitor sales activity across the business.",
+        subtitle: "Monitor bag sales activity across the business.",
       },
       payments: {
         title: "Payments",
@@ -145,7 +145,7 @@ export default function OwnerWorkspace({
       "delivery-notes": {
         title: "Delivery Notes",
         subtitle:
-          "Issue and track printable goods dispatch documents tied to completed sales.",
+          "Issue and track printable dispatch documents tied to completed sales.",
       },
       cash: {
         title: "Cash",
@@ -250,6 +250,59 @@ export default function OwnerWorkspace({
       return;
     }
 
+    if (activeTab === "overview") {
+      const totals = summary?.totals || {};
+      const byLocation = Array.isArray(summary?.byLocation)
+        ? summary.byLocation
+        : [];
+      const bySystemCategory = Array.isArray(summary?.bySystemCategory)
+        ? summary.bySystemCategory
+        : [];
+
+      const rows = [
+        ["Metric", "Value"],
+        ["Branches", totals.branchesCount ?? locations.length ?? 0],
+        ["Users", totals.usersCount ?? visibleStaffUsers.length ?? 0],
+        ["Bag Products", totals.productsCount ?? 0],
+        ["Sales Count", totals.salesCount ?? 0],
+        ["Payments Count", totals.paymentsCount ?? 0],
+        ["Inventory Value", totals.inventoryValue ?? 0],
+        ["Total Qty On Hand", totals.totalQtyOnHand ?? 0],
+        ["Low Stock Count", totals.lowStockCount ?? 0],
+        ["Out Of Stock Count", totals.outOfStockCount ?? 0],
+        [],
+        ["Branch Inventory Summary"],
+        [
+          "Branch Name",
+          "Branch Code",
+          "Inventory Value",
+          "Products Count",
+          "Total Qty On Hand",
+          "Low Stock Count",
+          "Out Of Stock Count",
+        ],
+        ...byLocation.map((row) => [
+          row?.locationName ?? "",
+          row?.locationCode ?? "",
+          row?.inventoryValue ?? 0,
+          row?.productsCount ?? 0,
+          row?.totalQtyOnHand ?? 0,
+          row?.lowStockCount ?? 0,
+          row?.outOfStockCount ?? 0,
+        ]),
+        [],
+        ["System Category Summary"],
+        ["System Category", "Products Count"],
+        ...bySystemCategory.map((row) => [
+          row?.systemCategory ?? "",
+          row?.productsCount ?? 0,
+        ]),
+      ];
+
+      downloadCSV("owner-overview.csv", rows);
+      return;
+    }
+
     const rows = [
       ["Metric", "Value"],
       ["Branches", locations.length],
@@ -259,7 +312,7 @@ export default function OwnerWorkspace({
       ["Payments", summary?.totals?.paymentsCount ?? 0],
     ];
 
-    downloadCSV("owner-overview.csv", rows);
+    downloadCSV(`owner-${activeTab || "view"}.csv`, rows);
   }
 
   let content = null;
@@ -391,8 +444,9 @@ export default function OwnerWorkspace({
                 </h1>
 
                 <p className="mt-3 text-base leading-7 text-stone-700 dark:text-stone-300">
-                  You should be able to move across owner tasks without losing
-                  context or waiting for the whole page to rebuild.
+                  You should be able to see branch pressure, stock risk,
+                  inventory capital, and operational movement without bouncing
+                  through multiple pages.
                 </p>
               </div>
 

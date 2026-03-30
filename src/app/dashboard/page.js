@@ -32,6 +32,19 @@ const TAB_KEYS = [
   "notes",
 ];
 
+const EMPTY_BRANCH_FORM = {
+  name: "",
+  code: "",
+  phone: "",
+  email: "",
+  website: "",
+  address: "",
+  tin: "",
+  momoCode: "",
+  bankAccounts: [],
+  logoUrl: "",
+};
+
 function updateUrlTab(tab) {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
@@ -43,6 +56,67 @@ function getInitialTab() {
   if (typeof window === "undefined") return "overview";
   const value = new URLSearchParams(window.location.search).get("tab");
   return TAB_KEYS.includes(value) ? value : "overview";
+}
+
+function normalizeBranchForm(location = {}) {
+  return {
+    name: safe(location?.name),
+    code: safe(location?.code),
+    phone: safe(location?.phone),
+    email: safe(location?.email),
+    website: safe(location?.website),
+    address: safe(location?.address),
+    tin: safe(location?.tin),
+    momoCode: safe(location?.momoCode || location?.momo_code),
+    bankAccounts: Array.isArray(location?.bankAccounts)
+      ? location.bankAccounts
+      : Array.isArray(location?.bank_accounts)
+        ? location.bank_accounts
+        : [],
+    logoUrl: safe(location?.logoUrl || location?.logo_url),
+  };
+}
+
+function cleanBankAccounts(value) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((entry) => {
+      if (typeof entry === "string") {
+        const s = entry.trim();
+        return s || null;
+      }
+
+      if (!entry || typeof entry !== "object") return null;
+
+      const bankName = safe(entry.bankName || entry.bank || entry.name);
+      const accountName = safe(entry.accountName || entry.holderName);
+      const accountNumber = safe(entry.accountNumber || entry.number);
+
+      if (!bankName && !accountName && !accountNumber) return null;
+
+      return {
+        ...(bankName ? { bankName } : {}),
+        ...(accountName ? { accountName } : {}),
+        ...(accountNumber ? { accountNumber } : {}),
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildBranchPayload(form) {
+  return {
+    name: safe(form?.name),
+    code: safe(form?.code).toUpperCase(),
+    phone: safe(form?.phone) || undefined,
+    email: safe(form?.email) || undefined,
+    website: safe(form?.website) || undefined,
+    address: safe(form?.address) || undefined,
+    tin: safe(form?.tin) || undefined,
+    momoCode: safe(form?.momoCode) || undefined,
+    bankAccounts: cleanBankAccounts(form?.bankAccounts),
+    logoUrl: safe(form?.logoUrl) || undefined,
+  };
 }
 
 export default function DashboardPage() {
@@ -83,21 +157,8 @@ export default function DashboardPage() {
   const [activeLocation, setActiveLocation] = useState(null);
   const [activeUser, setActiveUser] = useState(null);
 
-  const [createForm, setCreateForm] = useState({
-    name: "",
-    code: "",
-    phone: "",
-    website: "",
-    logoUrl: "",
-  });
-
-  const [editForm, setEditForm] = useState({
-    name: "",
-    code: "",
-    phone: "",
-    website: "",
-    logoUrl: "",
-  });
+  const [createForm, setCreateForm] = useState({ ...EMPTY_BRANCH_FORM });
+  const [editForm, setEditForm] = useState({ ...EMPTY_BRANCH_FORM });
 
   const [closeReason, setCloseReason] = useState("");
   const [archiveReason, setArchiveReason] = useState("");
@@ -311,26 +372,14 @@ export default function DashboardPage() {
   }
 
   function openCreateBranchModal() {
-    setCreateForm({
-      name: "",
-      code: "",
-      phone: "",
-      website: "",
-      logoUrl: "",
-    });
+    setCreateForm({ ...EMPTY_BRANCH_FORM });
     setModalError("");
     setCreateModalOpen(true);
   }
 
   function openEditBranchModal(location) {
     setActiveLocation(location || null);
-    setEditForm({
-      name: safe(location?.name),
-      code: safe(location?.code),
-      phone: safe(location?.phone),
-      website: safe(location?.website),
-      logoUrl: safe(location?.logoUrl),
-    });
+    setEditForm(normalizeBranchForm(location));
     setModalError("");
     setEditModalOpen(true);
   }
@@ -372,7 +421,7 @@ export default function DashboardPage() {
       name: safe(user?.name),
       role: safe(user?.role) || "admin",
       locationId: user?.locationId ? String(user.locationId) : "",
-      isActive: !!user?.isActive,
+      isActive: user?.isActive !== false,
     });
     setModalError("");
     setEditUserModalOpen(true);
@@ -403,13 +452,7 @@ export default function DashboardPage() {
     try {
       await apiFetch("/owner/locations", {
         method: "POST",
-        body: {
-          name: safe(createForm.name),
-          code: safe(createForm.code).toUpperCase(),
-          phone: safe(createForm.phone) || undefined,
-          website: safe(createForm.website) || undefined,
-          logoUrl: safe(createForm.logoUrl) || undefined,
-        },
+        body: buildBranchPayload(createForm),
       });
 
       closeAllBranchModals();
@@ -434,13 +477,7 @@ export default function DashboardPage() {
     try {
       await apiFetch(`/owner/locations/${activeLocation.id}`, {
         method: "PATCH",
-        body: {
-          name: safe(editForm.name),
-          code: safe(editForm.code).toUpperCase(),
-          phone: safe(editForm.phone) || undefined,
-          website: safe(editForm.website) || undefined,
-          logoUrl: safe(editForm.logoUrl) || undefined,
-        },
+        body: buildBranchPayload(editForm),
       });
 
       closeAllBranchModals();

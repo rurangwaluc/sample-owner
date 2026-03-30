@@ -11,6 +11,42 @@ import {
 import { resolveAssetUrl, uploadFiles } from "../../lib/apiUpload";
 import { useMemo, useRef, useState } from "react";
 
+function normalizeBankAccountsForInput(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((acc) => {
+        if (!acc) return "";
+
+        if (typeof acc === "string") {
+          return acc.trim();
+        }
+
+        const bankName = safe(acc.bankName) || safe(acc.bank) || safe(acc.name);
+        const accountName = safe(acc.accountName) || safe(acc.holderName);
+        const accountNumber = safe(acc.accountNumber) || safe(acc.number);
+
+        return [bankName, accountName, accountNumber]
+          .filter(Boolean)
+          .join(" • ");
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  return "";
+}
+
+function normalizeBankAccountsFromInput(value) {
+  return String(value || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 function BranchLogoPicker({
   value,
   onChange,
@@ -56,7 +92,7 @@ function BranchLogoPicker({
         id="branch-logo-url"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="/uploads/your-logo.png or https://..."
+        placeholder="/public/branch-logos/your-logo.png or https://..."
         disabled={disabled || uploading}
       />
 
@@ -117,35 +153,42 @@ function BranchLogoPicker({
 }
 
 function BranchIdentityFields({ form, setForm, disabled = false }) {
+  const bankAccountsText = useMemo(
+    () => normalizeBankAccountsForInput(form.bankAccounts),
+    [form.bankAccounts],
+  );
+
   return (
     <div className="space-y-5">
-      <div>
-        <FieldLabel htmlFor="branch-name">Branch name</FieldLabel>
-        <FormInput
-          id="branch-name"
-          value={form.name}
-          onChange={(e) =>
-            setForm((prev) => ({ ...prev, name: e.target.value }))
-          }
-          placeholder="e.g. GRAPE HARDWARE"
-          disabled={disabled}
-        />
-      </div>
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div>
+          <FieldLabel htmlFor="branch-name">Branch name</FieldLabel>
+          <FormInput
+            id="branch-name"
+            value={form.name}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, name: e.target.value }))
+            }
+            placeholder="e.g. GRAPE HARDWARE"
+            disabled={disabled}
+          />
+        </div>
 
-      <div>
-        <FieldLabel htmlFor="branch-code">Branch code</FieldLabel>
-        <FormInput
-          id="branch-code"
-          value={form.code}
-          onChange={(e) =>
-            setForm((prev) => ({
-              ...prev,
-              code: e.target.value.toUpperCase(),
-            }))
-          }
-          placeholder="e.g. GRAPE"
-          disabled={disabled}
-        />
+        <div>
+          <FieldLabel htmlFor="branch-code">Branch code</FieldLabel>
+          <FormInput
+            id="branch-code"
+            value={form.code}
+            onChange={(e) =>
+              setForm((prev) => ({
+                ...prev,
+                code: e.target.value.toUpperCase(),
+              }))
+            }
+            placeholder="e.g. GRAPE"
+            disabled={disabled}
+          />
+        </div>
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2">
@@ -163,6 +206,22 @@ function BranchIdentityFields({ form, setForm, disabled = false }) {
         </div>
 
         <div>
+          <FieldLabel htmlFor="branch-email">Email</FieldLabel>
+          <FormInput
+            id="branch-email"
+            type="email"
+            value={form.email}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, email: e.target.value }))
+            }
+            placeholder="branch@example.com"
+            disabled={disabled}
+          />
+        </div>
+      </div>
+
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div>
           <FieldLabel htmlFor="branch-website">Website</FieldLabel>
           <FormInput
             id="branch-website"
@@ -173,6 +232,70 @@ function BranchIdentityFields({ form, setForm, disabled = false }) {
             placeholder="https://example.com"
             disabled={disabled}
           />
+        </div>
+
+        <div>
+          <FieldLabel htmlFor="branch-tin">TIN number</FieldLabel>
+          <FormInput
+            id="branch-tin"
+            value={form.tin}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, tin: e.target.value }))
+            }
+            placeholder="TIN number"
+            disabled={disabled}
+          />
+        </div>
+      </div>
+
+      <div>
+        <FieldLabel htmlFor="branch-address">Address</FieldLabel>
+        <FormTextarea
+          id="branch-address"
+          value={form.address}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, address: e.target.value }))
+          }
+          placeholder="Branch physical address"
+          rows={3}
+          disabled={disabled}
+        />
+      </div>
+
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div>
+          <FieldLabel htmlFor="branch-momo-code">MoMo code</FieldLabel>
+          <FormInput
+            id="branch-momo-code"
+            value={form.momoCode}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, momoCode: e.target.value }))
+            }
+            placeholder="MoMo code"
+            disabled={disabled}
+          />
+        </div>
+
+        <div>
+          <FieldLabel htmlFor="branch-bank-accounts">Bank accounts</FieldLabel>
+          <FormTextarea
+            id="branch-bank-accounts"
+            value={bankAccountsText}
+            onChange={(e) =>
+              setForm((prev) => ({
+                ...prev,
+                bankAccounts: normalizeBankAccountsFromInput(e.target.value),
+              }))
+            }
+            placeholder={
+              "One account per line\nExample:\nBK • SHABA LTD • 123456789\nEquity • SHABA LTD • 987654321"
+            }
+            rows={5}
+            disabled={disabled}
+          />
+          <div className="mt-2 text-xs text-stone-500 dark:text-stone-400">
+            Write one bank account per line.
+          </div>
         </div>
       </div>
 
@@ -217,7 +340,7 @@ export default function BranchModals({
       <OverlayModal
         open={createModalOpen}
         title="Create branch"
-        subtitle="Create a new business branch with identity, contact detail, and document branding."
+        subtitle="Create a new business branch with identity, contact detail, payment detail, and document branding."
         onClose={closeAllBranchModals}
         footer={
           <>
@@ -254,9 +377,9 @@ export default function BranchModals({
           />
 
           <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4 text-sm leading-6 text-stone-700 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-300">
-            New branches are created as <strong>ACTIVE</strong>. This means the
-            owner can immediately assign staff, brand the branch properly, and
-            operate the branch with the right printed identity.
+            New branches are created as <strong>ACTIVE</strong>. The owner can
+            immediately assign staff, set full branch identity, and use the
+            branch on invoices, delivery notes, proformas, and payment details.
           </div>
         </div>
       </OverlayModal>
@@ -264,7 +387,7 @@ export default function BranchModals({
       <OverlayModal
         open={editModalOpen}
         title="Edit branch"
-        subtitle="Update branch identity, contact detail, and document branding without touching business history."
+        subtitle="Update branch identity, contact detail, payment detail, and document branding without touching business history."
         onClose={closeAllBranchModals}
         footer={
           <>

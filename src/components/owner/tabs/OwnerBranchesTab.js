@@ -26,6 +26,44 @@ function branchStatusTone(status) {
   return "bg-stone-100 text-stone-700 dark:bg-stone-900 dark:text-stone-300";
 }
 
+function normalizeBankAccounts(value) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((acc) => {
+      if (!acc) return "";
+
+      if (typeof acc === "string") {
+        return acc.trim();
+      }
+
+      const bankName = safe(acc.bankName) || safe(acc.bank) || safe(acc.name);
+      const accountName = safe(acc.accountName) || safe(acc.holderName);
+      const accountNumber = safe(acc.accountNumber) || safe(acc.number);
+
+      return [bankName, accountName, accountNumber].filter(Boolean).join(" • ");
+    })
+    .filter(Boolean);
+}
+
+function InfoMini({ label, value, breakAll = false }) {
+  return (
+    <div className="rounded-2xl border border-stone-200 bg-stone-50 p-3 dark:border-stone-800 dark:bg-stone-900">
+      <p className="text-[10px] uppercase tracking-[0.14em] text-stone-500 dark:text-stone-400">
+        {label}
+      </p>
+      <p
+        className={
+          "mt-2 text-sm font-semibold text-stone-950 dark:text-stone-50 " +
+          (breakAll ? "break-all" : "break-words")
+        }
+      >
+        {value || "-"}
+      </p>
+    </div>
+  );
+}
+
 function BranchIdentityCard({
   location,
   active,
@@ -38,6 +76,9 @@ function BranchIdentityCard({
   const logoUrl = safe(location?.logoUrl)
     ? resolveAssetUrl(location.logoUrl)
     : "";
+
+  const bankAccounts = normalizeBankAccounts(location?.bankAccounts);
+  const firstBankAccount = bankAccounts[0] || "";
 
   return (
     <div
@@ -68,7 +109,7 @@ function BranchIdentityCard({
             )}
           </div>
 
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="truncate text-base font-bold text-stone-950 dark:text-stone-50">
                 {safe(location?.name) || "-"}
@@ -90,14 +131,43 @@ function BranchIdentityCard({
               </span>
             </p>
 
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-stone-600 dark:text-stone-300">
-              {safe(location?.phone) ? (
-                <span>Tel: {safe(location.phone)}</span>
-              ) : null}
-              {safe(location?.website) ? (
-                <span>{safe(location.website)}</span>
-              ) : null}
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <InfoMini label="Phone" value={safe(location?.phone)} breakAll />
+              <InfoMini label="Email" value={safe(location?.email)} breakAll />
+              <InfoMini
+                label="Website"
+                value={safe(location?.website)}
+                breakAll
+              />
+              <InfoMini
+                label="TIN number"
+                value={safe(location?.tin)}
+                breakAll
+              />
+              <InfoMini
+                label="MoMo code"
+                value={safe(location?.momoCode)}
+                breakAll
+              />
+              <InfoMini label="Address" value={safe(location?.address)} />
             </div>
+
+            {firstBankAccount ? (
+              <div className="mt-3 rounded-2xl border border-stone-200 bg-stone-50 p-3 dark:border-stone-800 dark:bg-stone-900">
+                <p className="text-[10px] uppercase tracking-[0.14em] text-stone-500 dark:text-stone-400">
+                  Bank account
+                </p>
+                <p className="mt-2 break-words text-sm font-semibold text-stone-950 dark:text-stone-50">
+                  {firstBankAccount}
+                </p>
+                {bankAccounts.length > 1 ? (
+                  <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+                    +{bankAccounts.length - 1} more account
+                    {bankAccounts.length - 1 === 1 ? "" : "s"} in details
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </button>
 

@@ -7,11 +7,13 @@ import {
   FormSelect,
   SectionCard,
   StatCard,
+  downloadCSV,
   safe,
   safeNumber,
 } from "../OwnerShared";
 import { useEffect, useMemo, useState } from "react";
 
+import AsyncButton from "../../AsyncButton";
 import { apiFetch } from "../../../lib/api";
 
 function money(v) {
@@ -348,6 +350,104 @@ export default function OwnerReportsTab({ locations = [] }) {
     setLoading(false);
   }
 
+  function exportOverviewReport() {
+    const rows = [
+      ["Metric", "Value"],
+      ["Branches", safeNumber(overview?.branchesCount)],
+      ["Sales Total", safeNumber(overview?.salesTotal)],
+      ["Sales Count", safeNumber(overview?.salesCount)],
+      ["Payments Total", safeNumber(overview?.paymentsTotal)],
+      ["Payments Count", safeNumber(overview?.paymentsCount)],
+      ["Credits Total", safeNumber(overview?.creditsTotal)],
+      ["Credits Count", safeNumber(overview?.creditsCount)],
+      ["Refunds Total", safeNumber(overview?.refundsTotal)],
+      ["Refunds Count", safeNumber(overview?.refundsCount)],
+      ["Outstanding Credit", safeNumber(overview?.outstandingCredit)],
+    ];
+
+    downloadCSV("owner-reports-overview.csv", rows);
+  }
+
+  function exportBranchPerformance() {
+    const rows = [
+      [
+        "Branch",
+        "Branch Code",
+        "Branch Status",
+        "Sales Count",
+        "Sales Total",
+        "Payments Count",
+        "Payments Total",
+        "Credits Count",
+        "Credits Total",
+        "Refunds Count",
+        "Refunds Total",
+        "Cash In Total",
+        "Cash Out Total",
+        "Net Cash",
+        "Payment Coverage",
+      ],
+      ...branchRows.map((row) => [
+        row?.locationName || "",
+        row?.locationCode || "",
+        row?.locationStatus || "",
+        safeNumber(row?.salesCount),
+        safeNumber(row?.salesTotal),
+        safeNumber(row?.paymentsCount),
+        safeNumber(row?.paymentsTotal),
+        safeNumber(row?.creditsCount),
+        safeNumber(row?.creditsTotal),
+        safeNumber(row?.refundsCount),
+        safeNumber(row?.refundsTotal),
+        safeNumber(row?.cashInTotal),
+        safeNumber(row?.cashOutTotal),
+        safeNumber(row?.netCash),
+        safeNumber(row?.paymentCoverage),
+      ]),
+    ];
+
+    downloadCSV("owner-reports-branch-performance.csv", rows);
+  }
+
+  function exportFinancialBreakdown() {
+    const rows = [
+      ["Payments by Method"],
+      ["Method", "Count", "Total"],
+      ...(financialSummary?.paymentsByMethod || []).map((row) => [
+        row?.method || "",
+        safeNumber(row?.count),
+        safeNumber(row?.total),
+      ]),
+      [],
+      ["Credits by Status"],
+      ["Status", "Count", "Total"],
+      ...(financialSummary?.creditsByStatus || []).map((row) => [
+        row?.status || "",
+        safeNumber(row?.count),
+        safeNumber(row?.total),
+      ]),
+      [],
+      ["Sales by Status"],
+      ["Status", "Count", "Total"],
+      ...(financialSummary?.salesByStatus || []).map((row) => [
+        row?.status || "",
+        safeNumber(row?.count),
+        safeNumber(row?.total),
+      ]),
+      [],
+      ["Cash by Method and Direction"],
+      ["Method", "Direction", "Count", "Total"],
+      ...(financialSummary?.cashByMethod || []).map((row) => [
+        row?.method || "",
+        row?.direction || "",
+        safeNumber(row?.count),
+        safeNumber(row?.total),
+      ]),
+    ];
+
+    downloadCSV("owner-reports-financial-breakdown.csv", rows);
+  }
+
   useEffect(() => {
     loadReports();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -359,6 +459,14 @@ export default function OwnerReportsTab({ locations = [] }) {
       : branchRows.find(
           (row) => String(row.locationId) === String(selectedBranchId),
         ) || null;
+
+  const strongestBranch = [...branchRows].sort((a, b) => {
+    return safeNumber(b?.salesTotal) - safeNumber(a?.salesTotal);
+  })[0];
+
+  const weakestCoverageBranch = [...branchRows].sort((a, b) => {
+    return safeNumber(a?.paymentCoverage) - safeNumber(b?.paymentCoverage);
+  })[0];
 
   return (
     <div className="space-y-6">
@@ -381,7 +489,7 @@ export default function OwnerReportsTab({ locations = [] }) {
             title="Owner reports filters"
             subtitle="Focus the report range before comparing branch performance."
           >
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-4">
               <FormSelect
                 value={locationFilter}
                 onChange={(e) => setLocationFilter(e.target.value)}
@@ -405,6 +513,13 @@ export default function OwnerReportsTab({ locations = [] }) {
                 type="date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
+              />
+
+              <AsyncButton
+                idleText="Export overview"
+                loadingText="Exporting..."
+                successText="Exported"
+                onClick={async () => exportOverviewReport()}
               />
             </div>
           </SectionCard>
@@ -449,11 +564,34 @@ export default function OwnerReportsTab({ locations = [] }) {
                 tone="warn"
               />
             </div>
+
+            <div className="mt-4 grid gap-4 xl:grid-cols-2">
+              <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4 text-sm leading-6 text-stone-700 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-300">
+                {strongestBranch
+                  ? `Top visible branch by sales total is ${safe(strongestBranch.locationName)} (${safe(strongestBranch.locationCode)}) at ${money(strongestBranch.salesTotal)} RWF.`
+                  : "No branch sales leader is visible in this report scope."}
+              </div>
+
+              <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4 text-sm leading-6 text-stone-700 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-300">
+                {weakestCoverageBranch
+                  ? `Weakest payment coverage is currently ${safe(weakestCoverageBranch.locationName)} (${safe(weakestCoverageBranch.locationCode)}) at ${pct(weakestCoverageBranch.paymentCoverage)}. That is where owner attention should go first.`
+                  : "No payment-coverage warning branch is visible yet."}
+              </div>
+            </div>
           </SectionCard>
 
           <SectionCard
             title="Branch performance"
             subtitle="Compare operational strength branch by branch."
+            right={
+              <AsyncButton
+                idleText="Export branch performance"
+                loadingText="Exporting..."
+                successText="Exported"
+                onClick={async () => exportBranchPerformance()}
+                variant="secondary"
+              />
+            }
           >
             <div className="overflow-hidden rounded-2xl border border-stone-200 dark:border-stone-800">
               <div className="hidden grid-cols-[180px_120px_140px_140px_120px_120px_120px] gap-3 bg-stone-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-stone-500 dark:bg-stone-950 dark:text-stone-400 lg:grid">
@@ -563,6 +701,21 @@ export default function OwnerReportsTab({ locations = [] }) {
                   valueClassName="text-[17px] leading-tight"
                 />
               </div>
+
+              <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4 text-sm leading-6 text-stone-700 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-300">
+                  Net cash of <b>{money(selectedBranch.netCash)}</b> RWF tells
+                  you how much visible payment strength remains after recorded
+                  cash-out movement.
+                </div>
+
+                <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4 text-sm leading-6 text-stone-700 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-300">
+                  Payment coverage of{" "}
+                  <b>{pct(selectedBranch.paymentCoverage)}</b> is the fastest
+                  owner health signal on this branch. Low coverage means
+                  recorded payments are lagging behind recorded sales.
+                </div>
+              </div>
             </SectionCard>
           ) : (
             <SectionCard
@@ -573,31 +726,45 @@ export default function OwnerReportsTab({ locations = [] }) {
             </SectionCard>
           )}
 
-          <div className="grid gap-4 xl:grid-cols-2">
-            <BreakdownCard
-              title="Payments by method"
-              rows={financialSummary?.paymentsByMethod || []}
-              kind="method"
-            />
+          <SectionCard
+            title="Financial breakdowns"
+            subtitle="Exportable breakdowns by method, status, and cash movement."
+            right={
+              <AsyncButton
+                idleText="Export financial breakdown"
+                loadingText="Exporting..."
+                successText="Exported"
+                onClick={async () => exportFinancialBreakdown()}
+                variant="secondary"
+              />
+            }
+          >
+            <div className="grid gap-4 xl:grid-cols-2">
+              <BreakdownCard
+                title="Payments by method"
+                rows={financialSummary?.paymentsByMethod || []}
+                kind="method"
+              />
 
-            <BreakdownCard
-              title="Credits by status"
-              rows={financialSummary?.creditsByStatus || []}
-              kind="status"
-            />
+              <BreakdownCard
+                title="Credits by status"
+                rows={financialSummary?.creditsByStatus || []}
+                kind="status"
+              />
 
-            <BreakdownCard
-              title="Sales by status"
-              rows={financialSummary?.salesByStatus || []}
-              kind="status"
-            />
+              <BreakdownCard
+                title="Sales by status"
+                rows={financialSummary?.salesByStatus || []}
+                kind="status"
+              />
 
-            <BreakdownCard
-              title="Cash by method and direction"
-              rows={financialSummary?.cashByMethod || []}
-              kind="cash-method"
-            />
-          </div>
+              <BreakdownCard
+                title="Cash by method and direction"
+                rows={financialSummary?.cashByMethod || []}
+                kind="cash-method"
+              />
+            </div>
+          </SectionCard>
         </>
       )}
     </div>

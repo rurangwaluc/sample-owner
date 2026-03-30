@@ -25,43 +25,29 @@ const PRODUCT_STATUS_FILTERS = [
   { value: "ARCHIVED", label: "Archived" },
 ];
 
-const CATEGORY_OPTIONS = [
-  "GENERAL_HARDWARE",
-  "FASTENERS",
-  "TOOLS",
-  "POWER_TOOLS",
-  "ELECTRICAL",
-  "PLUMBING",
-  "PAINT",
-  "BUILDING_MATERIALS",
-  "SAFETY",
-  "PPE",
-  "APPAREL",
-  "FOOTWEAR",
-  "RAIN_GEAR",
-  "ACCESSORIES",
-  "OTHER",
+const SYSTEM_CATEGORY_OPTIONS = [
+  "WOVEN_PP_BAG",
+  "LAMINATED_PP_BAG",
+  "BOPP_LAMINATED_BAG",
+  "LINER_PP_BAG",
+  "VALVE_PP_BAG",
+  "GUSSETED_PP_BAG",
+  "VENTILATED_PP_BAG",
+  "MESH_PP_BAG",
+  "FIBC_JUMBO_BAG",
+  "OTHER_PP_BAG",
 ];
 
 const UNIT_OPTIONS = [
-  "PIECE",
-  "PAIR",
-  "SET",
-  "BOX",
-  "PACK",
-  "BUNDLE",
-  "ROLL",
-  "METER",
-  "CENTIMETER",
-  "MILLIMETER",
-  "KILOGRAM",
-  "GRAM",
-  "LITER",
-  "MILLILITER",
-  "SHEET",
   "BAG",
-  "CARTON",
+  "BALE",
+  "PIECE",
+  "BUNDLE",
+  "PACK",
   "DOZEN",
+  "CARTON",
+  "ROLL",
+  "KILOGRAM",
 ];
 
 const PAGE_SIZE = 20;
@@ -70,29 +56,33 @@ function money(v) {
   return safeNumber(v).toLocaleString();
 }
 
+function displayCategoryChip(row) {
+  return safe(row?.systemCategory) || safe(row?.category) || "OTHER_PP_BAG";
+}
+
 function productStatusTone(isActive) {
   return isActive
     ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
     : "bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300";
 }
 
-function categoryTone(category) {
-  const value = String(category || "").toUpperCase();
+function categoryTone(value) {
+  const v = String(value || "").toUpperCase();
 
-  if (value.includes("PPE") || value.includes("SAFETY")) {
-    return "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300";
+  if (v.includes("BOPP") || v.includes("LAMINATED")) {
+    return "bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300";
   }
 
-  if (
-    value.includes("APPAREL") ||
-    value.includes("RAIN") ||
-    value.includes("FOOTWEAR")
-  ) {
+  if (v.includes("MESH") || v.includes("VENTILATED")) {
     return "bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300";
   }
 
-  if (value.includes("ELECTRICAL") || value.includes("POWER")) {
-    return "bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300";
+  if (v.includes("JUMBO") || v.includes("FIBC")) {
+    return "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300";
+  }
+
+  if (v.includes("VALVE") || v.includes("LINER")) {
+    return "bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300";
   }
 
   return "bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300";
@@ -110,7 +100,8 @@ function normalizeProduct(row) {
     locationStatus: row.locationStatus ?? row.location_status ?? "",
     name: row.name ?? "",
     displayName: row.displayName ?? row.display_name ?? "",
-    category: row.category ?? "GENERAL_HARDWARE",
+    systemCategory: row.systemCategory ?? row.system_category ?? "WOVEN_PP_BAG",
+    category: row.category ?? "",
     subcategory: row.subcategory ?? "",
     sku: row.sku ?? "",
     barcode: row.barcode ?? "",
@@ -172,10 +163,10 @@ function ProductListRow({ row, active, onSelect }) {
               "rounded-full px-2 py-0.5 text-[9px] font-medium tracking-[0.08em] " +
               (active
                 ? "bg-white/10 text-white dark:bg-stone-900/10 dark:text-stone-950"
-                : categoryTone(row?.category))
+                : categoryTone(displayCategoryChip(row)))
             }
           >
-            {safe(row?.category) || "CATEGORY"}
+            {displayCategoryChip(row)}
           </span>
         </div>
 
@@ -257,10 +248,10 @@ function ProductMobileRow({ row, active, onSelect }) {
                 "rounded-full px-2 py-0.5 text-[9px] font-medium tracking-[0.08em] " +
                 (active
                   ? "bg-white/10 text-white dark:bg-stone-900/10 dark:text-stone-950"
-                  : categoryTone(row?.category))
+                  : categoryTone(displayCategoryChip(row)))
               }
             >
-              {safe(row?.category) || "CATEGORY"}
+              {displayCategoryChip(row)}
             </span>
           </div>
 
@@ -353,7 +344,8 @@ export default function OwnerProductsTab({ locations = [] }) {
     locationId: "",
     name: "",
     displayName: "",
-    category: "GENERAL_HARDWARE",
+    systemCategory: "WOVEN_PP_BAG",
+    category: "",
     subcategory: "",
     sku: "",
     barcode: "",
@@ -362,11 +354,11 @@ export default function OwnerProductsTab({ locations = [] }) {
     model: "",
     size: "",
     color: "",
-    material: "",
+    material: "POLYPROPYLENE",
     variantSummary: "",
-    stockUnit: "PIECE",
-    salesUnit: "PIECE",
-    purchaseUnit: "PIECE",
+    stockUnit: "BAG",
+    salesUnit: "BAG",
+    purchaseUnit: "BALE",
     purchaseUnitFactor: "1",
     sellingPrice: "",
     costPrice: "",
@@ -380,7 +372,8 @@ export default function OwnerProductsTab({ locations = [] }) {
   const [editForm, setEditForm] = useState({
     name: "",
     displayName: "",
-    category: "GENERAL_HARDWARE",
+    systemCategory: "WOVEN_PP_BAG",
+    category: "",
     subcategory: "",
     sku: "",
     barcode: "",
@@ -389,12 +382,12 @@ export default function OwnerProductsTab({ locations = [] }) {
     model: "",
     size: "",
     color: "",
-    material: "",
+    material: "POLYPROPYLENE",
     variantSummary: "",
     unit: "PIECE",
-    stockUnit: "PIECE",
-    salesUnit: "PIECE",
-    purchaseUnit: "PIECE",
+    stockUnit: "BAG",
+    salesUnit: "BAG",
+    purchaseUnit: "BALE",
     purchaseUnitFactor: "1",
     reorderLevel: "0",
     trackInventory: true,
@@ -549,11 +542,13 @@ export default function OwnerProductsTab({ locations = [] }) {
   };
 
   const categorySummary = useMemo(() => {
-    const rows = Array.isArray(summary?.byCategory) ? summary.byCategory : [];
+    const rows = Array.isArray(summary?.bySystemCategory)
+      ? summary.bySystemCategory
+      : [];
     const first = rows[0] || null;
 
     return {
-      topCategory: safe(first?.category) || "-",
+      topCategory: safe(first?.systemCategory) || "-",
       topCategoryCount: safeNumber(first?.productsCount || 0),
     };
   }, [summary]);
@@ -568,7 +563,8 @@ export default function OwnerProductsTab({ locations = [] }) {
         : "",
       name: "",
       displayName: "",
-      category: "GENERAL_HARDWARE",
+      systemCategory: "WOVEN_PP_BAG",
+      category: "",
       subcategory: "",
       sku: "",
       barcode: "",
@@ -577,11 +573,11 @@ export default function OwnerProductsTab({ locations = [] }) {
       model: "",
       size: "",
       color: "",
-      material: "",
+      material: "POLYPROPYLENE",
       variantSummary: "",
-      stockUnit: "PIECE",
-      salesUnit: "PIECE",
-      purchaseUnit: "PIECE",
+      stockUnit: "BAG",
+      salesUnit: "BAG",
+      purchaseUnit: "BALE",
       purchaseUnitFactor: "1",
       sellingPrice: "",
       costPrice: "",
@@ -600,7 +596,8 @@ export default function OwnerProductsTab({ locations = [] }) {
         : "",
       name: "",
       displayName: "",
-      category: "GENERAL_HARDWARE",
+      systemCategory: "WOVEN_PP_BAG",
+      category: "",
       subcategory: "",
       sku: "",
       barcode: "",
@@ -609,11 +606,11 @@ export default function OwnerProductsTab({ locations = [] }) {
       model: "",
       size: "",
       color: "",
-      material: "",
+      material: "POLYPROPYLENE",
       variantSummary: "",
-      stockUnit: "PIECE",
-      salesUnit: "PIECE",
-      purchaseUnit: "PIECE",
+      stockUnit: "BAG",
+      salesUnit: "BAG",
+      purchaseUnit: "BALE",
       purchaseUnitFactor: "1",
       sellingPrice: "",
       costPrice: "",
@@ -639,7 +636,8 @@ export default function OwnerProductsTab({ locations = [] }) {
     setEditForm({
       name: safe(selectedProduct.name),
       displayName: safe(selectedProduct.displayName),
-      category: safe(selectedProduct.category) || "GENERAL_HARDWARE",
+      systemCategory: safe(selectedProduct.systemCategory) || "WOVEN_PP_BAG",
+      category: safe(selectedProduct.category),
       subcategory: safe(selectedProduct.subcategory),
       sku: safe(selectedProduct.sku),
       barcode: safe(selectedProduct.barcode),
@@ -651,21 +649,15 @@ export default function OwnerProductsTab({ locations = [] }) {
       material: safe(selectedProduct.material),
       variantSummary: safe(selectedProduct.variantSummary),
       unit:
-        safe(selectedProduct.unit) ||
-        safe(selectedProduct.stockUnit) ||
-        "PIECE",
+        safe(selectedProduct.unit) || safe(selectedProduct.stockUnit) || "BAG",
       stockUnit:
-        safe(selectedProduct.stockUnit) ||
-        safe(selectedProduct.unit) ||
-        "PIECE",
+        safe(selectedProduct.stockUnit) || safe(selectedProduct.unit) || "BAG",
       salesUnit:
-        safe(selectedProduct.salesUnit) ||
-        safe(selectedProduct.unit) ||
-        "PIECE",
+        safe(selectedProduct.salesUnit) || safe(selectedProduct.unit) || "BAG",
       purchaseUnit:
         safe(selectedProduct.purchaseUnit) ||
         safe(selectedProduct.unit) ||
-        "PIECE",
+        "BAG",
       purchaseUnitFactor: String(
         safeNumber(selectedProduct.purchaseUnitFactor || 1),
       ),
@@ -723,6 +715,7 @@ export default function OwnerProductsTab({ locations = [] }) {
           locationId: safeNumber(createForm.locationId),
           name: safe(createForm.name),
           displayName: safe(createForm.displayName) || undefined,
+          systemCategory: safe(createForm.systemCategory) || "WOVEN_PP_BAG",
           category: safe(createForm.category) || undefined,
           subcategory: safe(createForm.subcategory) || undefined,
           sku: safe(createForm.sku) || undefined,
@@ -734,6 +727,7 @@ export default function OwnerProductsTab({ locations = [] }) {
           color: safe(createForm.color) || undefined,
           material: safe(createForm.material) || undefined,
           variantSummary: safe(createForm.variantSummary) || undefined,
+          unit: safe(createForm.stockUnit) || "BAG",
           stockUnit: safe(createForm.stockUnit) || undefined,
           salesUnit: safe(createForm.salesUnit) || undefined,
           purchaseUnit: safe(createForm.purchaseUnit) || undefined,
@@ -772,6 +766,7 @@ export default function OwnerProductsTab({ locations = [] }) {
         body: {
           name: safe(editForm.name),
           displayName: safe(editForm.displayName) || undefined,
+          systemCategory: safe(editForm.systemCategory) || "WOVEN_PP_BAG",
           category: safe(editForm.category) || undefined,
           subcategory: safe(editForm.subcategory) || undefined,
           sku: safe(editForm.sku) || undefined,
@@ -939,7 +934,7 @@ export default function OwnerProductsTab({ locations = [] }) {
                 sub="Hidden but preserved records"
               />
               <StatCard
-                label="Top category"
+                label="Top system type"
                 value={categorySummary.topCategory}
                 valueClassName="text-xl sm:text-lg leading-tight"
                 sub={`${categorySummary.topCategoryCount} products`}
@@ -1350,8 +1345,8 @@ export default function OwnerProductsTab({ locations = [] }) {
 
                     <div className="mt-4 rounded-2xl border border-stone-200 bg-white p-4 text-sm leading-6 text-stone-700 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300">
                       This owner tab now matches the richer backend product
-                      model, including mixed hardware, apparel, PPE, footwear,
-                      and rain gear attributes.
+                      model, including system category, business label, units,
+                      pricing, and stock behavior.
                     </div>
                   </div>
                 </div>
@@ -1523,7 +1518,7 @@ export default function OwnerProductsTab({ locations = [] }) {
                 onChange={(e) =>
                   setCreateForm((prev) => ({ ...prev, name: e.target.value }))
                 }
-                placeholder="e.g. Safety shoe"
+                placeholder="e.g. PP Woven Rice Bag 25KG"
               />
             </div>
 
@@ -1547,18 +1542,20 @@ export default function OwnerProductsTab({ locations = [] }) {
 
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             <div>
-              <FieldLabel htmlFor="product-category">Category</FieldLabel>
+              <FieldLabel htmlFor="product-category">
+                System category
+              </FieldLabel>
               <FormSelect
                 id="product-category"
-                value={createForm.category}
+                value={createForm.systemCategory}
                 onChange={(e) =>
                   setCreateForm((prev) => ({
                     ...prev,
-                    category: e.target.value,
+                    systemCategory: e.target.value,
                   }))
                 }
               >
-                {CATEGORY_OPTIONS.map((value) => (
+                {SYSTEM_CATEGORY_OPTIONS.map((value) => (
                   <option key={value} value={value}>
                     {value}
                   </option>
@@ -1566,6 +1563,22 @@ export default function OwnerProductsTab({ locations = [] }) {
               </FormSelect>
             </div>
 
+            <div>
+              <FieldLabel htmlFor="product-business-category">
+                Business label
+              </FieldLabel>
+              <FormInput
+                id="product-business-category"
+                value={createForm.category}
+                onChange={(e) =>
+                  setCreateForm((prev) => ({
+                    ...prev,
+                    systemCategory: e.target.value,
+                  }))
+                }
+                placeholder="RICE, SUGAR, FLOUR EXPORT"
+              />
+            </div>
             <div>
               <FieldLabel htmlFor="product-subcategory">Subcategory</FieldLabel>
               <FormInput
@@ -1688,7 +1701,7 @@ export default function OwnerProductsTab({ locations = [] }) {
                     material: e.target.value,
                   }))
                 }
-                placeholder="Material"
+                placeholder="POLYPROPYLENE"
               />
             </div>
           </div>
@@ -1973,10 +1986,12 @@ export default function OwnerProductsTab({ locations = [] }) {
 
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             <div>
-              <FieldLabel htmlFor="edit-product-category">Category</FieldLabel>
+              <FieldLabel htmlFor="edit-product-category">
+                System category
+              </FieldLabel>
               <FormSelect
                 id="edit-product-category"
-                value={editForm.category}
+                value={editForm.systemCategory}
                 onChange={(e) =>
                   setEditForm((prev) => ({
                     ...prev,
@@ -1984,7 +1999,7 @@ export default function OwnerProductsTab({ locations = [] }) {
                   }))
                 }
               >
-                {CATEGORY_OPTIONS.map((value) => (
+                {SYSTEM_CATEGORY_OPTIONS.map((value) => (
                   <option key={value} value={value}>
                     {value}
                   </option>
@@ -1992,6 +2007,22 @@ export default function OwnerProductsTab({ locations = [] }) {
               </FormSelect>
             </div>
 
+            <div>
+              <FieldLabel htmlFor="edit-product-business-category">
+                Business label
+              </FieldLabel>
+              <FormInput
+                id="edit-product-business-category"
+                value={editForm.category}
+                onChange={(e) =>
+                  setEditForm((prev) => ({
+                    ...prev,
+                    category: e.target.value,
+                  }))
+                }
+                placeholder="RICE, SUGAR, FLOUR EXPORT"
+              />
+            </div>
             <div>
               <FieldLabel htmlFor="edit-product-subcategory">
                 Subcategory
@@ -2116,7 +2147,7 @@ export default function OwnerProductsTab({ locations = [] }) {
                     material: e.target.value,
                   }))
                 }
-                placeholder="Material"
+                placeholder="POLYPROPYLENE"
               />
             </div>
           </div>
