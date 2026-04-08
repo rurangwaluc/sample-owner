@@ -1,497 +1,635 @@
 "use client";
 
-import { AlertBox, downloadCSV, safe } from "./OwnerShared";
+import {
+  BarChart3,
+  Bell,
+  Building2,
+  ChevronDown,
+  ClipboardList,
+  CreditCard,
+  FileClock,
+  FileSearch,
+  HandCoins,
+  LayoutDashboard,
+  Package,
+  Receipt,
+  ScrollText,
+  ShieldCheck,
+  Store,
+  Truck,
+  Users,
+  Wallet,
+} from "lucide-react";
 
-import AppShell from "../AppShell";
-import AsyncButton from "../AsyncButton";
 import BranchModals from "./BranchModals";
-import DashboardSkeleton from "../PageSkeleton";
-import OwnerArrivalsTab from "./tabs/OwnerArrivalsTab";
 import OwnerAuditTab from "./tabs/OwnerAuditTab";
 import OwnerBranchesTab from "./tabs/OwnerBranchesTab";
 import OwnerCashTab from "./tabs/OwnerCashTab";
 import OwnerCreditsTab from "./tabs/OwnerCreditsTab";
 import OwnerCustomersTab from "./tabs/OwnerCustomersTab";
-import OwnerDeliveryNotesTab from "./tabs/OwnerDeliveryNotesTab";
 import OwnerExpensesTab from "./tabs/OwnerExpensesTab";
 import OwnerInventoryTab from "./tabs/OwnerInventoryTab";
 import OwnerNotesTab from "./tabs/OwnerNotesTab";
 import OwnerOverviewTab from "./tabs/OwnerOverviewTab";
 import OwnerPaymentsTab from "./tabs/OwnerPaymentsTab";
 import OwnerProductsTab from "./tabs/OwnerProductsTab";
-import OwnerProformasTab from "./tabs/OwnerProformasTab";
 import OwnerRefundsTab from "./tabs/OwnerRefundsTab";
 import OwnerReportsTab from "./tabs/OwnerReportsTab";
 import OwnerSalesTab from "./tabs/OwnerSalesTab";
 import OwnerStaffTab from "./tabs/OwnerStaffTab";
 import OwnerSupplierBillsTab from "./tabs/OwnerSupplierBillsTab";
+import OwnerSupplierEvaluationsTab from "./tabs/OwnerSupplierEvaluationsTab";
+import OwnerSupplierProfilesTab from "./tabs/OwnerSupplierProfilesTab";
 import OwnerSuppliersTab from "./tabs/OwnerSuppliersTab";
 import StaffModals from "./StaffModals";
+import ThemeToggle from "../ThemeToggle";
 import { useMemo } from "react";
 
-function getTimeGreeting() {
-  const hour = new Date().getHours();
+function safe(v) {
+  return String(v ?? "").trim();
+}
 
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
+function sectionTitle(activeTab) {
+  switch (activeTab) {
+    case "overview":
+      return "Overview";
+    case "branches":
+      return "Branches";
+    case "staff":
+      return "Staff";
+    case "inventory":
+      return "Inventory";
+    case "products":
+      return "Products";
+    case "sales":
+      return "Sales";
+    case "payments":
+      return "Payments";
+    case "credits":
+      return "Credits";
+    case "suppliers":
+      return "Suppliers";
+    case "supplier-profiles":
+      return "Supplier Profiles";
+    case "supplier-evaluations":
+      return "Supplier Evaluations";
+    case "supplier-bills":
+      return "Supplier Bills";
+    case "cash":
+      return "Cash";
+    case "refunds":
+      return "Refunds";
+    case "expenses":
+      return "Expenses";
+    case "customers":
+      return "Customers";
+    case "reports":
+      return "Reports";
+    case "audit":
+      return "Audit";
+    case "notes":
+      return "Notes";
+    default:
+      return "Overview";
+  }
+}
+
+function sectionSubtitle(activeTab) {
+  switch (activeTab) {
+    case "overview":
+      return "Business-wide performance, problems, and decisions in one place.";
+    case "branches":
+      return "Branch structure, status, identity, and operational control.";
+    case "staff":
+      return "People, permissions, branch assignment, and staff discipline.";
+    case "inventory":
+      return "Stock truth, movement, and branch-level inventory visibility.";
+    case "products":
+      return "Catalog structure, pricing readiness, and product control.";
+    case "sales":
+      return "Sales flow, output, and operational execution visibility.";
+    case "payments":
+      return "Recorded customer payments, methods, and settlement behavior.";
+    case "credits":
+      return "Customer credit exposure, control, and repayment visibility.";
+    case "suppliers":
+      return "Supplier master records, contact detail, and liability context.";
+    case "supplier-profiles":
+      return "Supplier payment setup, terms, bank details, and instructions.";
+    case "supplier-evaluations":
+      return "Owner evaluation, preferred suppliers, watchlist, and risk.";
+    case "supplier-bills":
+      return "Supplier liabilities, due dates, installments, and balances.";
+    case "cash":
+      return "Cash movement, sessions, and reconciliation visibility.";
+    case "refunds":
+      return "Refund discipline, reasons, and financial impact visibility.";
+    case "expenses":
+      return "Operating expenses and branch-level cost discipline.";
+    case "customers":
+      return "Customer records, activity, balances, and relationships.";
+    case "reports":
+      return "Owner-grade reporting across branches, stock, money, and staff.";
+    case "audit":
+      return "Evidence trail for critical actions and sensitive changes.";
+    case "notes":
+      return "Internal notes, follow-ups, and management attention points.";
+    default:
+      return "Business-wide performance, problems, and decisions in one place.";
+  }
+}
+
+function NavButton({ item, active, onClick }) {
+  const Icon = item.icon;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onClick?.(item.key)}
+      className={
+        "group flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-all duration-200 " +
+        (active
+          ? "border-stone-900 bg-stone-900 text-white shadow-md dark:border-stone-100 dark:bg-stone-100 dark:text-stone-950"
+          : "border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-200 dark:hover:border-stone-700 dark:hover:bg-stone-800")
+      }
+    >
+      <span
+        className={
+          "inline-flex h-10 w-10 items-center justify-center rounded-xl border transition " +
+          (active
+            ? "border-white/10 bg-white/10 text-white dark:border-stone-900/10 dark:bg-stone-900/10 dark:text-stone-950"
+            : "border-stone-200 bg-stone-50 text-stone-600 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-300")
+        }
+      >
+        <Icon className="h-5 w-5" />
+      </span>
+
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold">
+          {item.label}
+        </span>
+        {item.description ? (
+          <span
+            className={
+              "mt-0.5 block truncate text-xs " +
+              (active
+                ? "text-stone-300 dark:text-stone-600"
+                : "text-stone-500 dark:text-stone-400")
+            }
+          >
+            {item.description}
+          </span>
+        ) : null}
+      </span>
+    </button>
+  );
 }
 
 export default function OwnerWorkspace({
-  me,
-  loading,
-  errorText,
-  successText,
-  activeTab,
+  me = null,
+  activeTab = "overview",
   onNavigate,
   onLogout,
   onRefresh,
-  summary,
-  locations,
-  users,
-  sales,
-  audit,
-  selectedLocationId,
+
+  summary = null,
+  locations = [],
+  users = [],
+  sales = [],
+  audit = [],
+
+  selectedLocationId = null,
   setSelectedLocationId,
-  selectedUserId,
+  selectedUserId = null,
   setSelectedUserId,
-  branchStatusFilter,
+
+  branchStatusFilter = "ALL",
   setBranchStatusFilter,
-  staffSearch,
+
+  staffSearch = "",
   setStaffSearch,
-  staffStatusFilter,
-  staffLocationFilter,
-  setStaffLocationFilter,
+  staffStatusFilter = "ALL",
   setStaffStatusFilter,
-  activeLocations,
+  staffLocationFilter = "",
+  setStaffLocationFilter,
+
+  activeLocations = [],
+
   openCreateBranchModal,
   openEditBranchModal,
   openCloseBranchModal,
   reopenBranch,
   openArchiveBranchModal,
+
   openCreateUserModal,
   openEditUserModal,
   openDeactivateUserModal,
   onOpenResetPassword,
-  branchModalProps,
-  staffModalProps,
+
+  branchModalProps = {},
+  staffModalProps = {},
 }) {
-  const greeting = useMemo(() => getTimeGreeting(), []);
-
-  const visibleStaffUsers = useMemo(
-    () =>
-      Array.isArray(users) ? users.filter((row) => row?.role !== "owner") : [],
-    [users],
-  );
-
-  const tabMetaMap = useMemo(
-    () => ({
-      overview: {
-        title: "Owner Dashboard",
-        subtitle:
-          "See the business quickly, without bouncing through multiple pages.",
+  const navGroups = useMemo(
+    () => [
+      {
+        title: "Control Room",
+        items: [
+          {
+            key: "overview",
+            label: "Overview",
+            icon: LayoutDashboard,
+            description: "Business-wide command view",
+          },
+          {
+            key: "branches",
+            label: "Branches",
+            icon: Building2,
+            description: "Branch structure and state",
+          },
+          {
+            key: "staff",
+            label: "Staff",
+            icon: Users,
+            description: "People and permissions",
+          },
+        ],
       },
-      branches: {
-        title: "Branch Management",
-        subtitle:
-          "Create, edit, close, reopen, and archive branches from one owner workspace.",
+      {
+        title: "Operations",
+        items: [
+          {
+            key: "inventory",
+            label: "Inventory",
+            icon: Package,
+            description: "Stock truth and movement",
+          },
+          {
+            key: "products",
+            label: "Products",
+            icon: Store,
+            description: "Catalog and selling setup",
+          },
+          {
+            key: "sales",
+            label: "Sales",
+            icon: Receipt,
+            description: "Sales execution visibility",
+          },
+          {
+            key: "payments",
+            label: "Payments",
+            icon: CreditCard,
+            description: "Recorded customer payments",
+          },
+          {
+            key: "credits",
+            label: "Credits",
+            icon: HandCoins,
+            description: "Credit exposure and recovery",
+          },
+          {
+            key: "customers",
+            label: "Customers",
+            icon: Users,
+            description: "Customer base and balances",
+          },
+        ],
       },
-      staff: {
-        title: "Staff Management",
-        subtitle:
-          "Create, edit, deactivate, reset passwords, and assign staff by active branch.",
+      {
+        title: "Procurement",
+        items: [
+          {
+            key: "suppliers",
+            label: "Suppliers",
+            icon: Truck,
+            description: "Supplier master records",
+          },
+          {
+            key: "supplier-profiles",
+            label: "Supplier Profiles",
+            icon: FileSearch,
+            description: "Payment setup and terms",
+          },
+          {
+            key: "supplier-evaluations",
+            label: "Supplier Evaluations",
+            icon: ShieldCheck,
+            description: "Performance and risk scoring",
+          },
+          {
+            key: "supplier-bills",
+            label: "Supplier Bills",
+            icon: ClipboardList,
+            description: "Liabilities and due dates",
+          },
+        ],
       },
-      inventory: {
-        title: "Inventory",
-        subtitle:
-          "Track and inspect cross-branch bag stock visibility with owner-level control.",
+      {
+        title: "Finance",
+        items: [
+          {
+            key: "cash",
+            label: "Cash",
+            icon: Wallet,
+            description: "Cash movement and sessions",
+          },
+          {
+            key: "refunds",
+            label: "Refunds",
+            icon: FileClock,
+            description: "Refund discipline and impact",
+          },
+          {
+            key: "expenses",
+            label: "Expenses",
+            icon: ScrollText,
+            description: "Operating cost visibility",
+          },
+        ],
       },
-      arrivals: {
-        title: "Inventory Arrivals",
-        subtitle:
-          "Record stock received into branches and review arrival history professionally.",
+      {
+        title: "Oversight",
+        items: [
+          {
+            key: "reports",
+            label: "Reports",
+            icon: BarChart3,
+            description: "Owner-grade reporting",
+          },
+          {
+            key: "audit",
+            label: "Audit",
+            icon: ShieldCheck,
+            description: "Evidence and traceability",
+          },
+          {
+            key: "notes",
+            label: "Notes",
+            icon: Bell,
+            description: "Internal follow-up points",
+          },
+        ],
       },
-      products: {
-        title: "Products",
-        subtitle:
-          "Manage polypropylene bag product records, units, pricing, and stock rules.",
-      },
-      sales: {
-        title: "Sales",
-        subtitle: "Monitor bag sales activity across the business.",
-      },
-      payments: {
-        title: "Payments",
-        subtitle: "Monitor incoming payments and payment activity.",
-      },
-      credits: {
-        title: "Credits",
-        subtitle: "Track credit sales and outstanding balances.",
-      },
-      suppliers: {
-        title: "Suppliers",
-        subtitle: "Manage supplier records and supplier relationships.",
-      },
-      "supplier-bills": {
-        title: "Purchase Orders",
-        subtitle:
-          "Manage purchase commitments, ordered items, and supplier-facing purchasing records.",
-      },
-      proformas: {
-        title: "Proformas",
-        subtitle:
-          "Create and track printable quotations and pre-invoice documents across branches.",
-      },
-      "delivery-notes": {
-        title: "Delivery Notes",
-        subtitle:
-          "Issue and track printable dispatch documents tied to completed sales.",
-      },
-      cash: {
-        title: "Cash",
-        subtitle: "Control cash sessions, reconciliations, and deposits.",
-      },
-      refunds: {
-        title: "Refunds",
-        subtitle: "Track refund activity across branches.",
-      },
-      expenses: {
-        title: "Expenses",
-        subtitle: "Monitor business expenses and operational spending.",
-      },
-      customers: {
-        title: "Customers",
-        subtitle: "View customer records and customer activity.",
-      },
-      reports: {
-        title: "Reports",
-        subtitle: "Review owner-level reports and business summaries.",
-      },
-      audit: {
-        title: "Audit Log",
-        subtitle:
-          "Track what happened, where, and when, without leaving the workspace.",
-      },
-      notes: {
-        title: "Notes / Alerts",
-        subtitle: "Review notes, reminders, and business alerts.",
-      },
-    }),
+    ],
     [],
   );
 
-  const tabMeta = tabMetaMap[activeTab] || tabMetaMap.overview;
-  const showDashboardHero = activeTab === "overview";
+  const allTabs = useMemo(
+    () => navGroups.flatMap((group) => group.items),
+    [navGroups],
+  );
 
-  async function handleExport() {
-    if (activeTab === "branches") {
-      const rows = [
-        [
-          "Branch Name",
-          "Branch Code",
-          "Status",
-          "Users",
-          "Products",
-          "Sales",
-          "Payments",
-          "Opened At",
-          "Closed At",
-          "Archived At",
-          "Reason",
-        ],
-        ...locations.map((row) => [
-          row?.name ?? "",
-          row?.code ?? "",
-          row?.status ?? "",
-          row?.usersCount ?? 0,
-          row?.productsCount ?? 0,
-          row?.salesCount ?? 0,
-          row?.paymentsCount ?? 0,
-          row?.openedAt ?? "",
-          row?.closedAt ?? "",
-          row?.archivedAt ?? "",
-          row?.closeReason ?? "",
-        ]),
-      ];
+  const activeTabMeta =
+    allTabs.find((item) => item.key === activeTab) || allTabs[0];
 
-      downloadCSV("owner-branches.csv", rows);
-      return;
+  function renderActiveTab() {
+    switch (activeTab) {
+      case "overview":
+        return (
+          <OwnerOverviewTab
+            ownerName={safe(me?.name) || safe(me?.email) || "Owner"}
+            locations={locations}
+            summary={summary}
+            users={users}
+            sales={sales}
+            audit={audit}
+          />
+        );
+
+      case "branches":
+        return (
+          <OwnerBranchesTab
+            locations={locations}
+            selectedLocationId={selectedLocationId}
+            onSelectLocation={setSelectedLocationId}
+            branchStatusFilter={branchStatusFilter}
+            onChangeBranchStatusFilter={setBranchStatusFilter}
+            onOpenCreate={openCreateBranchModal}
+            onOpenEdit={openEditBranchModal}
+            onOpenClose={openCloseBranchModal}
+            onOpenReopen={reopenBranch}
+            onOpenArchive={openArchiveBranchModal}
+          />
+        );
+
+      case "staff":
+        return (
+          <OwnerStaffTab
+            users={users}
+            locations={locations}
+            activeLocations={activeLocations}
+            selectedUserId={selectedUserId}
+            onSelectUser={setSelectedUserId}
+            onOpenCreate={openCreateUserModal}
+            onOpenEdit={openEditUserModal}
+            onOpenDeactivate={openDeactivateUserModal}
+            onOpenResetPassword={onOpenResetPassword}
+            staffSearch={staffSearch}
+            onChangeStaffSearch={setStaffSearch}
+            staffStatusFilter={staffStatusFilter}
+            onChangeStaffStatusFilter={setStaffStatusFilter}
+            staffLocationFilter={staffLocationFilter}
+            onChangeStaffLocationFilter={setStaffLocationFilter}
+          />
+        );
+
+      case "inventory":
+        return <OwnerInventoryTab locations={locations} />;
+      case "products":
+        return <OwnerProductsTab locations={locations} />;
+      case "sales":
+        return <OwnerSalesTab locations={locations} />;
+      case "payments":
+        return <OwnerPaymentsTab locations={locations} />;
+      case "credits":
+        return <OwnerCreditsTab locations={locations} />;
+      case "suppliers":
+        return <OwnerSuppliersTab locations={locations} />;
+      case "supplier-profiles":
+        return <OwnerSupplierProfilesTab locations={locations} />;
+      case "supplier-evaluations":
+        return <OwnerSupplierEvaluationsTab locations={locations} />;
+      case "supplier-bills":
+        return <OwnerSupplierBillsTab locations={locations} />;
+      case "cash":
+        return <OwnerCashTab locations={locations} />;
+      case "refunds":
+        return <OwnerRefundsTab locations={locations} />;
+      case "expenses":
+        return <OwnerExpensesTab locations={locations} />;
+      case "customers":
+        return <OwnerCustomersTab locations={locations} />;
+      case "reports":
+        return <OwnerReportsTab locations={locations} />;
+      case "audit":
+        return <OwnerAuditTab locations={locations} />;
+      case "notes":
+        return <OwnerNotesTab locations={locations} />;
+      default:
+        return (
+          <OwnerOverviewTab
+            ownerName={safe(me?.name) || safe(me?.email) || "Owner"}
+            locations={locations}
+            summary={summary}
+            users={users}
+            sales={sales}
+            audit={audit}
+          />
+        );
     }
-
-    if (activeTab === "staff") {
-      const rows = [
-        ["Name", "Email", "Role", "Branch Name", "Branch Code", "Status"],
-        ...visibleStaffUsers.map((row) => [
-          row?.name ?? "",
-          row?.email ?? "",
-          row?.role ?? "",
-          row?.location?.name ?? "",
-          row?.location?.code ?? "",
-          row?.isActive ? "Active" : "Inactive",
-        ]),
-      ];
-
-      downloadCSV("owner-staff.csv", rows);
-      return;
-    }
-
-    if (activeTab === "audit") {
-      const rows = [
-        ["Action", "Entity", "Description", "Date"],
-        ...audit.map((row) => [
-          row?.action ?? "",
-          row?.entity ?? "",
-          row?.description ?? "",
-          row?.createdAt || row?.created_at || "",
-        ]),
-      ];
-
-      downloadCSV("owner-audit.csv", rows);
-      return;
-    }
-
-    if (activeTab === "overview") {
-      const totals = summary?.totals || {};
-      const byLocation = Array.isArray(summary?.byLocation)
-        ? summary.byLocation
-        : [];
-      const bySystemCategory = Array.isArray(summary?.bySystemCategory)
-        ? summary.bySystemCategory
-        : [];
-
-      const rows = [
-        ["Metric", "Value"],
-        ["Branches", totals.branchesCount ?? locations.length ?? 0],
-        ["Users", totals.usersCount ?? visibleStaffUsers.length ?? 0],
-        ["Bag Products", totals.productsCount ?? 0],
-        ["Sales Count", totals.salesCount ?? 0],
-        ["Payments Count", totals.paymentsCount ?? 0],
-        ["Inventory Value", totals.inventoryValue ?? 0],
-        ["Total Qty On Hand", totals.totalQtyOnHand ?? 0],
-        ["Low Stock Count", totals.lowStockCount ?? 0],
-        ["Out Of Stock Count", totals.outOfStockCount ?? 0],
-        [],
-        ["Branch Inventory Summary"],
-        [
-          "Branch Name",
-          "Branch Code",
-          "Inventory Value",
-          "Products Count",
-          "Total Qty On Hand",
-          "Low Stock Count",
-          "Out Of Stock Count",
-        ],
-        ...byLocation.map((row) => [
-          row?.locationName ?? "",
-          row?.locationCode ?? "",
-          row?.inventoryValue ?? 0,
-          row?.productsCount ?? 0,
-          row?.totalQtyOnHand ?? 0,
-          row?.lowStockCount ?? 0,
-          row?.outOfStockCount ?? 0,
-        ]),
-        [],
-        ["System Category Summary"],
-        ["System Category", "Products Count"],
-        ...bySystemCategory.map((row) => [
-          row?.systemCategory ?? "",
-          row?.productsCount ?? 0,
-        ]),
-      ];
-
-      downloadCSV("owner-overview.csv", rows);
-      return;
-    }
-
-    const rows = [
-      ["Metric", "Value"],
-      ["Branches", locations.length],
-      ["Users", visibleStaffUsers.length],
-      ["Products", summary?.totals?.productsCount ?? 0],
-      ["Sales", summary?.totals?.salesCount ?? 0],
-      ["Payments", summary?.totals?.paymentsCount ?? 0],
-    ];
-
-    downloadCSV(`owner-${activeTab || "view"}.csv`, rows);
-  }
-
-  let content = null;
-
-  if (loading) {
-    content = <DashboardSkeleton />;
-  } else if (activeTab === "branches") {
-    content = (
-      <OwnerBranchesTab
-        locations={locations}
-        selectedLocationId={selectedLocationId}
-        onSelectLocation={setSelectedLocationId}
-        branchStatusFilter={branchStatusFilter}
-        onChangeBranchStatusFilter={setBranchStatusFilter}
-        onOpenCreate={openCreateBranchModal}
-        onOpenEdit={openEditBranchModal}
-        onOpenClose={openCloseBranchModal}
-        onOpenReopen={reopenBranch}
-        onOpenArchive={openArchiveBranchModal}
-      />
-    );
-  } else if (activeTab === "staff") {
-    content = (
-      <OwnerStaffTab
-        users={visibleStaffUsers}
-        locations={locations}
-        activeLocations={activeLocations}
-        selectedUserId={selectedUserId}
-        onSelectUser={setSelectedUserId}
-        onOpenCreate={openCreateUserModal}
-        onOpenEdit={openEditUserModal}
-        onOpenDeactivate={openDeactivateUserModal}
-        onOpenResetPassword={onOpenResetPassword}
-        staffSearch={staffSearch}
-        onChangeStaffSearch={setStaffSearch}
-        staffStatusFilter={staffStatusFilter}
-        onChangeStaffStatusFilter={setStaffStatusFilter}
-        staffLocationFilter={staffLocationFilter}
-        onChangeStaffLocationFilter={setStaffLocationFilter}
-      />
-    );
-  } else if (activeTab === "inventory") {
-    content = <OwnerInventoryTab locations={locations} />;
-  } else if (activeTab === "arrivals") {
-    content = <OwnerArrivalsTab locations={locations} />;
-  } else if (activeTab === "products") {
-    content = <OwnerProductsTab locations={locations} />;
-  } else if (activeTab === "sales") {
-    content = <OwnerSalesTab locations={locations} />;
-  } else if (activeTab === "payments") {
-    content = <OwnerPaymentsTab locations={locations} />;
-  } else if (activeTab === "credits") {
-    content = <OwnerCreditsTab locations={locations} />;
-  } else if (activeTab === "suppliers") {
-    content = <OwnerSuppliersTab locations={locations} />;
-  } else if (activeTab === "supplier-bills") {
-    content = <OwnerSupplierBillsTab locations={locations} />;
-  } else if (activeTab === "proformas") {
-    content = <OwnerProformasTab locations={locations} />;
-  } else if (activeTab === "delivery-notes") {
-    content = <OwnerDeliveryNotesTab locations={locations} />;
-  } else if (activeTab === "cash") {
-    content = <OwnerCashTab locations={locations} users={users} />;
-  } else if (activeTab === "refunds") {
-    content = <OwnerRefundsTab locations={locations} />;
-  } else if (activeTab === "expenses") {
-    content = <OwnerExpensesTab locations={locations} />;
-  } else if (activeTab === "customers") {
-    content = <OwnerCustomersTab locations={locations} />;
-  } else if (activeTab === "reports") {
-    content = <OwnerReportsTab locations={locations} />;
-  } else if (activeTab === "audit") {
-    content = <OwnerAuditTab audit={audit} locations={locations} />;
-  } else if (activeTab === "notes") {
-    content = <OwnerNotesTab locations={locations} />;
-  } else {
-    content = (
-      <OwnerOverviewTab
-        summary={summary}
-        locations={locations}
-        sales={sales}
-        audit={audit}
-      />
-    );
   }
 
   return (
     <>
-      <AppShell
-        title={tabMeta.title}
-        subtitle={tabMeta.subtitle}
-        user={me}
-        onLogout={onLogout}
-        navItems={[
-          { key: "overview", label: "Dashboard" },
-          { key: "branches", label: "Branches", badge: locations.length || 0 },
-          { key: "staff", label: "Team", badge: visibleStaffUsers.length || 0 },
-          { key: "inventory", label: "Inventory" },
-          { key: "arrivals", label: "Arrivals" },
-          { key: "products", label: "Products" },
-          { key: "sales", label: "Sales" },
-          { key: "payments", label: "Payments" },
-          { key: "credits", label: "Credits" },
-          { key: "suppliers", label: "Suppliers" },
-          { key: "supplier-bills", label: "Purchase Orders" },
-          { key: "proformas", label: "Proformas" },
-          { key: "delivery-notes", label: "Delivery Notes" },
-          { key: "cash", label: "Cash" },
-          { key: "refunds", label: "Refunds" },
-          { key: "expenses", label: "Expenses" },
-          { key: "customers", label: "Customers" },
-          { key: "reports", label: "Reports" },
-          { key: "audit", label: "Audit" },
-          { key: "notes", label: "Notes / Alerts" },
-        ]}
-        activeKey={activeTab}
-        onNavigate={onNavigate}
-      >
-        <div className="space-y-6">
-          {showDashboardHero ? (
-            <div className="flex flex-col gap-4 rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm dark:border-stone-800 dark:bg-stone-900 sm:p-6 lg:flex-row lg:items-end lg:justify-between">
-              <div className="max-w-3xl">
-                <div className="inline-flex items-center rounded-full border border-stone-300 bg-stone-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-600 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-300">
-                  Owner workspace
+      <div className="grid gap-5 xl:h-[calc(100vh-32px)] xl:grid-cols-[320px_minmax(0,1fr)] xl:gap-6">
+        <aside className="hidden xl:block xl:min-h-0">
+          <div className="sticky top-4 h-[calc(100vh-48px)] overflow-hidden">
+            <div className="h-full overflow-y-auto pr-2">
+              <div className="space-y-5">
+                {navGroups.map((group) => (
+                  <div
+                    key={group.title}
+                    className="rounded-[28px] border border-stone-200 bg-stone-50 p-4 dark:border-stone-800 dark:bg-stone-950"
+                  >
+                    <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500 dark:text-stone-400">
+                      {group.title}
+                    </p>
+
+                    <div className="mt-3 space-y-2">
+                      {group.items.map((item) => (
+                        <NavButton
+                          key={item.key}
+                          item={item}
+                          active={activeTab === item.key}
+                          onClick={onNavigate}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <section className="min-w-0 space-y-5 xl:min-h-0 xl:overflow-y-auto xl:pr-2">
+          <div className="sticky top-0 z-20 bg-white p-4 pb-5 dark:bg-stone-950">
+            <div className="rounded-[24px] border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900 sm:rounded-[28px] sm:p-5 lg:p-6">
+              <div className="flex flex-col gap-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500 dark:text-stone-400">
+                      Current section
+                    </p>
+                    <h1 className="mt-1 truncate text-xl font-black tracking-tight text-stone-950 dark:text-stone-50 sm:text-2xl">
+                      {activeTabMeta?.label || sectionTitle(activeTab)}
+                    </h1>
+                    <p className="mt-2 max-w-3xl text-sm text-stone-600 dark:text-stone-400">
+                      {sectionSubtitle(activeTab)}
+                    </p>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    {onRefresh ? (
+                      <button
+                        type="button"
+                        onClick={onRefresh}
+                        className="hidden h-10 items-center justify-center rounded-xl border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800 sm:inline-flex"
+                        title="Refresh"
+                      >
+                        Refresh
+                      </button>
+                    ) : null}
+
+                    <ThemeToggle />
+
+                    {onLogout ? (
+                      <button
+                        type="button"
+                        onClick={onLogout}
+                        className="hidden h-10 items-center justify-center rounded-xl bg-stone-900 px-3 text-sm font-semibold text-white transition hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-950 dark:hover:bg-stone-200 sm:inline-flex"
+                        title="Logout"
+                      >
+                        Logout
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
 
-                <h1 className="mt-4 text-3xl font-black leading-tight text-stone-950 dark:text-stone-50 sm:text-4xl">
-                  {greeting}, {safe(me?.name || me?.email || "Owner")}.
-                </h1>
+                <div className="xl:hidden">
+                  <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500 dark:text-stone-400">
+                    Workspace section
+                  </label>
 
-                <p className="mt-3 text-base leading-7 text-stone-700 dark:text-stone-300">
-                  You should be able to see branch pressure, stock risk,
-                  inventory capital, and operational movement without bouncing
-                  through multiple pages.
-                </p>
-              </div>
+                  <div className="relative">
+                    <select
+                      value={activeTab}
+                      onChange={(e) => onNavigate?.(e.target.value)}
+                      className="h-12 w-full appearance-none rounded-2xl border border-stone-300 bg-white pl-4 pr-12 text-sm font-semibold text-stone-900 outline-none transition focus:border-stone-500 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-100 dark:focus:border-stone-500"
+                    >
+                      {navGroups.map((group) => (
+                        <optgroup key={group.title} label={group.title}>
+                          {group.items.map((item) => (
+                            <option key={item.key} value={item.key}>
+                              {item.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
 
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <AsyncButton
-                  idleText="Refresh workspace"
-                  loadingText="Refreshing..."
-                  successText="Refreshed"
-                  onClick={onRefresh}
-                  variant="secondary"
-                />
+                    <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-stone-500 dark:text-stone-400">
+                      <ChevronDown className="h-5 w-5" />
+                    </span>
+                  </div>
 
-                <AsyncButton
-                  idleText="Export current view"
-                  loadingText="Exporting..."
-                  successText="Exported"
-                  onClick={handleExport}
-                />
+                  <div className="mt-3 flex items-center gap-3 rounded-2xl border border-stone-200 bg-stone-50 p-3 dark:border-stone-800 dark:bg-stone-950">
+                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-700 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200">
+                      {activeTabMeta?.icon ? (
+                        <activeTabMeta.icon className="h-5 w-5" />
+                      ) : null}
+                    </span>
+
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-stone-950 dark:text-stone-50">
+                        {activeTabMeta?.label || sectionTitle(activeTab)}
+                      </p>
+                      <p className="truncate text-xs text-stone-500 dark:text-stone-400">
+                        {activeTabMeta?.description ||
+                          sectionSubtitle(activeTab)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2 sm:hidden">
+                    {onRefresh ? (
+                      <button
+                        type="button"
+                        onClick={onRefresh}
+                        className="inline-flex h-10 items-center justify-center rounded-xl border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
+                      >
+                        Refresh
+                      </button>
+                    ) : null}
+
+                    {onLogout ? (
+                      <button
+                        type="button"
+                        onClick={onLogout}
+                        className="inline-flex h-10 items-center justify-center rounded-xl bg-stone-900 px-3 text-sm font-semibold text-white transition hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-950 dark:hover:bg-stone-200"
+                      >
+                        Logout
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             </div>
-          ) : (
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-              <AsyncButton
-                idleText="Refresh workspace"
-                loadingText="Refreshing..."
-                successText="Refreshed"
-                onClick={onRefresh}
-                variant="secondary"
-              />
+          </div>
 
-              <AsyncButton
-                idleText="Export current view"
-                loadingText="Exporting..."
-                successText="Exported"
-                onClick={handleExport}
-              />
-            </div>
-          )}
-
-          <AlertBox message={errorText} />
-          <AlertBox message={successText} tone="success" />
-
-          {content}
-        </div>
-      </AppShell>
+          {renderActiveTab()}
+        </section>
+      </div>
 
       <BranchModals {...branchModalProps} />
       <StaffModals {...staffModalProps} />

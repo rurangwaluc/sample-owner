@@ -5,8 +5,6 @@ import {
   EmptyState,
   FormInput,
   FormSelect,
-  SectionCard,
-  StatCard,
   safe,
   safeDate,
   safeNumber,
@@ -17,6 +15,10 @@ import AsyncButton from "../../AsyncButton";
 import { apiFetch } from "../../../lib/api";
 
 const PAGE_SIZE = 20;
+
+function cx(...classes) {
+  return classes.filter(Boolean).join(" ");
+}
 
 function normalizeCurrency(v) {
   const s = String(v || "RWF")
@@ -36,6 +38,20 @@ function normalizeBillsResponse(result) {
   if (Array.isArray(result?.rows)) return result.rows;
   if (Array.isArray(result?.data)) return result.data;
   return [];
+}
+
+function normalizeSupplier(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id ?? null,
+    name: row.name ?? "",
+    defaultCurrency: normalizeCurrency(
+      row.defaultCurrency ?? row.default_currency ?? "RWF",
+    ),
+    sourceType: row.sourceType ?? row.source_type ?? "LOCAL",
+    isActive: row.isActive ?? row.is_active ?? true,
+  };
 }
 
 function normalizeBill(row) {
@@ -126,222 +142,196 @@ function displayCreatedBy(row) {
   return "-";
 }
 
+function Pill({ tone = "neutral", children }) {
+  const cls =
+    tone === "success"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300"
+      : tone === "warn"
+        ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300"
+        : tone === "danger"
+          ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-300"
+          : tone === "info"
+            ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/40 dark:bg-sky-950/20 dark:text-sky-300"
+            : "border-stone-200 bg-stone-100 text-stone-700 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300";
+
+  return (
+    <span
+      className={cx(
+        "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em]",
+        cls,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
 function statusTone(status) {
   const s = safe(status).toUpperCase();
-
-  if (s === "PAID") {
-    return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300";
-  }
-  if (s === "PARTIALLY_PAID") {
-    return "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300";
-  }
-  if (s === "OPEN" || s === "DRAFT") {
-    return "bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300";
-  }
-  if (s === "VOID") {
-    return "bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300";
-  }
-
-  return "bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300";
+  if (s === "PAID") return "success";
+  if (s === "PARTIALLY_PAID") return "warn";
+  if (s === "OPEN" || s === "DRAFT") return "info";
+  if (s === "VOID") return "danger";
+  return "neutral";
 }
 
-function overdueTone(isOverdue) {
-  return isOverdue
-    ? "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"
-    : "bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300";
+function SectionShell({ title, hint, right, children }) {
+  return (
+    <section className="overflow-hidden rounded-[30px] border border-stone-200 bg-white shadow-[0_10px_30px_rgba(2,6,23,0.04)] dark:border-stone-800 dark:bg-stone-900 dark:shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-stone-200 p-5 dark:border-stone-800">
+        <div className="min-w-0">
+          <div className="text-base font-black tracking-[-0.02em] text-stone-950 dark:text-stone-50">
+            {title}
+          </div>
+          {hint ? (
+            <div className="mt-1 text-sm text-stone-500 dark:text-stone-400">
+              {hint}
+            </div>
+          ) : null}
+        </div>
+        {right ? <div className="shrink-0">{right}</div> : null}
+      </div>
+      <div className="p-5">{children}</div>
+    </section>
+  );
 }
 
-function surfaceTone(active) {
-  return active
-    ? "border-stone-900 bg-stone-900 text-white shadow-xl ring-1 ring-stone-700 dark:border-stone-100 dark:bg-stone-100 dark:text-stone-950 dark:ring-stone-300"
-    : "border-stone-200 bg-white hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md dark:border-stone-800 dark:bg-stone-900 dark:hover:border-stone-700 dark:hover:bg-stone-900";
+function Surface({ children, className = "" }) {
+  return (
+    <div
+      className={cx(
+        "rounded-[24px] border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
 }
 
-function softPanelTone(active) {
-  return active
-    ? "border-white/10 bg-white/5 dark:border-stone-900/10 dark:bg-stone-900/5"
-    : "border-stone-200 bg-stone-50 dark:border-stone-800 dark:bg-stone-950";
+function MetricCard({ label, value, sub, tone = "default" }) {
+  const valueClass =
+    tone === "danger"
+      ? "text-rose-700 dark:text-rose-300"
+      : "text-stone-950 dark:text-stone-50";
+
+  return (
+    <div className="rounded-[22px] border border-stone-200 bg-stone-50 p-4 dark:border-stone-800 dark:bg-stone-950">
+      <div className="text-[11px] font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+        {label}
+      </div>
+      <div className={cx("mt-2 text-lg font-black", valueClass)}>{value}</div>
+      {sub ? (
+        <div className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+          {sub}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
-function dangerPanelTone(active) {
-  return active
-    ? "border-rose-300/20 bg-rose-400/10 text-white dark:border-rose-900/20 dark:bg-rose-900/10 dark:text-stone-950"
-    : "border-rose-200 bg-rose-50 dark:border-rose-900/50 dark:bg-rose-950/20";
-}
-
-function metaTextTone(active) {
-  return active
-    ? "text-stone-300 dark:text-stone-600"
-    : "text-stone-500 dark:text-stone-400";
+function InfoTile({ label, value }) {
+  return (
+    <div className="rounded-[20px] border border-stone-200 bg-stone-50 p-4 dark:border-stone-800 dark:bg-stone-950">
+      <div className="text-[11px] font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+        {label}
+      </div>
+      <div className="mt-2 break-words text-sm font-semibold text-stone-950 dark:text-stone-50">
+        {value || "-"}
+      </div>
+    </div>
+  );
 }
 
 function BillCard({ row, active, onSelect, locations = [] }) {
   const currency = normalizeCurrency(row?.currency);
+  const status = safe(row?.status) || "OPEN";
 
   return (
     <button
       type="button"
       onClick={() => onSelect?.(row)}
-      className={
-        "group w-full overflow-hidden rounded-[28px] border text-left transition-all duration-200 " +
-        surfaceTone(active)
-      }
+      className={cx(
+        "w-full rounded-[24px] border p-4 text-left transition",
+        active
+          ? "border-stone-400 bg-stone-50 dark:border-stone-700 dark:bg-stone-950"
+          : "border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50 dark:border-stone-800 dark:bg-stone-900 dark:hover:border-stone-700 dark:hover:bg-stone-950",
+      )}
     >
-      <div className="p-4 sm:p-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="truncate text-base font-bold sm:text-lg">
-                Bill #{safe(row?.billNo || row?.id) || "-"}
-              </h3>
-
-              {active ? (
-                <span className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white dark:border-stone-900/15 dark:bg-stone-900/10 dark:text-stone-950">
-                  Selected
-                </span>
-              ) : null}
-
-              <span
-                className={
-                  "inline-flex rounded-full px-3 py-1 text-[11px] font-semibold " +
-                  (active
-                    ? "bg-white/10 text-white dark:bg-stone-900/10 dark:text-stone-950"
-                    : statusTone(row?.status))
-                }
-              >
-                {safe(row?.status) || "OPEN"}
-              </span>
-
-              <span
-                className={
-                  "inline-flex rounded-full px-3 py-1 text-[11px] font-semibold " +
-                  (active
-                    ? "bg-white/10 text-white dark:bg-stone-900/10 dark:text-stone-950"
-                    : "bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300")
-                }
-              >
-                {currency}
-              </span>
-
-              <span
-                className={
-                  "inline-flex rounded-full px-3 py-1 text-[11px] font-semibold " +
-                  (active
-                    ? "bg-white/10 text-white dark:bg-stone-900/10 dark:text-stone-950"
-                    : overdueTone(!!row?.isOverdue))
-                }
-              >
-                {row?.isOverdue
-                  ? `${safeNumber(row?.daysOverdue)}d overdue`
-                  : "On time"}
-              </span>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="truncate text-sm font-black text-stone-950 dark:text-stone-50">
+              Bill #{safe(row?.billNo || row?.id) || "-"}
             </div>
-
-            <div
-              className={
-                "mt-3 grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-4 " +
-                (active
-                  ? "text-stone-200 dark:text-stone-700"
-                  : "text-stone-600 dark:text-stone-400")
-              }
-            >
-              <p className="truncate">
-                <span className="font-medium">Supplier:</span>{" "}
-                {safe(row?.supplierName) || "-"}
-              </p>
-              <p className="truncate">
-                <span className="font-medium">Branch:</span>{" "}
-                {displayBranch(row, locations)}
-              </p>
-              <p className="truncate">
-                <span className="font-medium">Issued:</span>{" "}
-                {safeDate(row?.issuedDate)}
-              </p>
-              <p className="truncate">
-                <span className="font-medium">Due:</span>{" "}
-                {safeDate(row?.dueDate)}
-              </p>
-            </div>
+            <Pill tone={statusTone(status)}>{status}</Pill>
+            <Pill tone="neutral">{currency}</Pill>
+            <Pill tone={row?.isOverdue ? "danger" : "neutral"}>
+              {row?.isOverdue
+                ? `${safeNumber(row?.daysOverdue)}D OVERDUE`
+                : "ON TIME"}
+            </Pill>
           </div>
 
-          <div
-            className={
-              "rounded-2xl border px-4 py-3 xl:min-w-[220px] " +
-              softPanelTone(active)
-            }
-          >
-            <p
-              className={
-                "text-[11px] font-semibold uppercase tracking-[0.18em] " +
-                metaTextTone(active)
-              }
-            >
-              Remaining balance
-            </p>
-            <p className="mt-2 text-xl font-black sm:text-2xl">
-              {money(row?.balance, currency)}
-            </p>
-            <p className={"mt-1 text-xs " + metaTextTone(active)}>
-              Outstanding in {currency}
-            </p>
+          <div className="mt-2 text-xs text-stone-500 dark:text-stone-400">
+            Supplier:{" "}
+            <b className="text-stone-900 dark:text-stone-100">
+              {safe(row?.supplierName) || "-"}
+            </b>{" "}
+            • Branch:{" "}
+            <b className="text-stone-900 dark:text-stone-100">
+              {displayBranch(row, locations)}
+            </b>
+          </div>
+
+          <div className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+            Issued:{" "}
+            <b className="text-stone-900 dark:text-stone-100">
+              {safeDate(row?.issuedDate)}
+            </b>{" "}
+            • Due:{" "}
+            <b className="text-stone-900 dark:text-stone-100">
+              {safeDate(row?.dueDate)}
+            </b>
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className={"rounded-2xl border p-4 " + softPanelTone(active)}>
-            <p
-              className={
-                "text-[11px] uppercase tracking-[0.14em] " +
-                metaTextTone(active)
-              }
-            >
-              Total ({currency})
-            </p>
-            <p className="mt-2 text-lg font-bold">
-              {money(row?.totalAmount, currency)}
-            </p>
+        <div className="shrink-0 text-right">
+          <div className="text-[11px] font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+            Balance
           </div>
-
-          <div className={"rounded-2xl border p-4 " + softPanelTone(active)}>
-            <p
-              className={
-                "text-[11px] uppercase tracking-[0.14em] " +
-                metaTextTone(active)
-              }
-            >
-              Paid ({currency})
-            </p>
-            <p className="mt-2 text-lg font-bold">
-              {money(row?.paidAmount, currency)}
-            </p>
+          <div className="mt-1 text-lg font-black text-stone-950 dark:text-stone-50">
+            {money(row?.balance, currency)}
           </div>
-
-          <div className={"rounded-2xl border p-4 " + softPanelTone(active)}>
-            <p
-              className={
-                "text-[11px] uppercase tracking-[0.14em] " +
-                metaTextTone(active)
-              }
-            >
-              Created by
-            </p>
-            <p className="mt-2 text-lg font-bold">{displayCreatedBy(row)}</p>
+          <div className="mt-1 text-[11px] text-stone-500 dark:text-stone-400">
+            {displayCreatedBy(row)}
           </div>
+        </div>
+      </div>
 
-          <div className={"rounded-2xl border p-4 " + dangerPanelTone(active)}>
-            <p
-              className={
-                "text-[11px] uppercase tracking-[0.14em] " +
-                (active
-                  ? "text-rose-100 dark:text-rose-800"
-                  : "text-rose-700 dark:text-rose-300")
-              }
-            >
-              Balance ({currency})
-            </p>
-            <p className="mt-2 text-lg font-bold">
-              {money(row?.balance, currency)}
-            </p>
+      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="rounded-[18px] border border-stone-200 bg-stone-50 p-3 dark:border-stone-800 dark:bg-stone-950">
+          <div className="text-[11px] font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+            Total
+          </div>
+          <div className="mt-2 text-sm font-bold text-stone-950 dark:text-stone-50">
+            {money(row?.totalAmount, currency)}
+          </div>
+        </div>
+        <div className="rounded-[18px] border border-stone-200 bg-stone-50 p-3 dark:border-stone-800 dark:bg-stone-950">
+          <div className="text-[11px] font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+            Paid
+          </div>
+          <div className="mt-2 text-sm font-bold text-stone-950 dark:text-stone-50">
+            {money(row?.paidAmount, currency)}
+          </div>
+        </div>
+        <div className="rounded-[18px] border border-rose-200 bg-rose-50 p-3 dark:border-rose-900/40 dark:bg-rose-950/20">
+          <div className="text-[11px] font-black uppercase tracking-[0.12em] text-rose-700 dark:text-rose-300">
+            Remaining
+          </div>
+          <div className="mt-2 text-sm font-bold text-rose-700 dark:text-rose-300">
+            {money(row?.balance, currency)}
           </div>
         </div>
       </div>
@@ -351,15 +341,15 @@ function BillCard({ row, active, onSelect, locations = [] }) {
 
 function ModalShell({ title, subtitle, onClose, children }) {
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-950/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-stone-200 bg-white p-5 shadow-2xl dark:border-stone-800 dark:bg-stone-900 sm:p-6">
-        <div className="flex items-start justify-between gap-4">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-950/50 p-4 backdrop-blur-[2px]">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[30px] border border-stone-200 bg-white shadow-[0_30px_80px_rgba(2,6,23,0.22)] dark:border-stone-800 dark:bg-stone-900">
+        <div className="flex items-start justify-between gap-4 border-b border-stone-200 p-5 dark:border-stone-800">
           <div>
-            <h3 className="text-xl font-bold text-stone-950 dark:text-stone-50">
+            <h3 className="text-xl font-black text-stone-950 dark:text-stone-50">
               {title}
             </h3>
             {subtitle ? (
-              <p className="mt-1 text-sm text-stone-600 dark:text-stone-400">
+              <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">
                 {subtitle}
               </p>
             ) : null}
@@ -374,43 +364,72 @@ function ModalShell({ title, subtitle, onClose, children }) {
           </button>
         </div>
 
-        <div className="mt-5">{children}</div>
+        <div className="p-5">{children}</div>
       </div>
     </div>
   );
 }
 
-function CreateBillModal({ open, suppliers, locations, onClose, onSaved }) {
-  const [form, setForm] = useState({
+function billCreateDefaults(suppliers) {
+  const firstSupplier = Array.isArray(suppliers) ? suppliers[0] : null;
+  const defaultCurrency = normalizeCurrency(firstSupplier?.defaultCurrency);
+
+  return {
     supplierId: "",
     locationId: "",
     billNo: "",
-    currency: "RWF",
+    currency: defaultCurrency || "RWF",
     totalAmount: "",
     issuedDate: "",
     dueDate: "",
     note: "",
     status: "OPEN",
-  });
+  };
+}
+
+function billEditDefaults(bill) {
+  return {
+    supplierId: String(bill?.supplierId || ""),
+    locationId: String(bill?.locationId || ""),
+    billNo: safe(bill?.billNo) || "",
+    currency: normalizeCurrency(bill?.currency),
+    totalAmount: String(bill?.totalAmount ?? ""),
+    issuedDate: bill?.issuedDate ? String(bill.issuedDate).slice(0, 10) : "",
+    dueDate: bill?.dueDate ? String(bill.dueDate).slice(0, 10) : "",
+    note: safe(bill?.note) || "",
+    status: safe(bill?.status) || "OPEN",
+  };
+}
+
+function CreateBillModal({ open, suppliers, locations, onClose, onSaved }) {
+  if (!open) return null;
+
+  return (
+    <CreateBillModalInner
+      key={`create-bill-${suppliers?.length || 0}`}
+      suppliers={suppliers}
+      locations={locations}
+      onClose={onClose}
+      onSaved={onSaved}
+    />
+  );
+}
+
+function CreateBillModalInner({ suppliers, locations, onClose, onSaved }) {
+  const [form, setForm] = useState(() => billCreateDefaults(suppliers));
   const [errorText, setErrorText] = useState("");
 
-  useEffect(() => {
-    if (!open) return;
-    setForm({
-      supplierId: "",
-      locationId: "",
-      billNo: "",
-      currency: "RWF",
-      totalAmount: "",
-      issuedDate: "",
-      dueDate: "",
-      note: "",
-      status: "OPEN",
-    });
-    setErrorText("");
-  }, [open]);
+  const selectedSupplier = useMemo(
+    () =>
+      (Array.isArray(suppliers) ? suppliers : []).find(
+        (row) => String(row.id) === String(form.supplierId),
+      ) || null,
+    [suppliers, form.supplierId],
+  );
 
-  if (!open) return null;
+  const effectiveCurrency = selectedSupplier?.defaultCurrency
+    ? normalizeCurrency(selectedSupplier.defaultCurrency)
+    : normalizeCurrency(form.currency);
 
   async function handleSave() {
     setErrorText("");
@@ -420,7 +439,7 @@ function CreateBillModal({ open, suppliers, locations, onClose, onSaved }) {
         supplierId: Number(form.supplierId),
         locationId: Number(form.locationId),
         billNo: form.billNo || undefined,
-        currency: form.currency || undefined,
+        currency: effectiveCurrency || undefined,
         totalAmount: Number(form.totalAmount),
         issuedDate: form.issuedDate || undefined,
         dueDate: form.dueDate || undefined,
@@ -435,7 +454,9 @@ function CreateBillModal({ open, suppliers, locations, onClose, onSaved }) {
 
       onSaved?.(result);
     } catch (e) {
-      setErrorText(e?.data?.error || e?.message || "Failed to create bill");
+      setErrorText(
+        e?.data?.error || e?.message || "Failed to create supplier bill",
+      );
     }
   }
 
@@ -449,7 +470,7 @@ function CreateBillModal({ open, suppliers, locations, onClose, onSaved }) {
 
       <div className="grid gap-4 md:grid-cols-2">
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Supplier
           </label>
           <FormSelect
@@ -468,7 +489,7 @@ function CreateBillModal({ open, suppliers, locations, onClose, onSaved }) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Branch
           </label>
           <FormSelect
@@ -487,7 +508,7 @@ function CreateBillModal({ open, suppliers, locations, onClose, onSaved }) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Bill number
           </label>
           <FormInput
@@ -495,27 +516,33 @@ function CreateBillModal({ open, suppliers, locations, onClose, onSaved }) {
             onChange={(e) =>
               setForm((prev) => ({ ...prev, billNo: e.target.value }))
             }
-            placeholder="INV-001"
+            placeholder="BILL-001"
           />
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Currency
           </label>
           <FormSelect
-            value={form.currency}
+            value={effectiveCurrency}
             onChange={(e) =>
               setForm((prev) => ({ ...prev, currency: e.target.value }))
             }
+            disabled={!!selectedSupplier?.defaultCurrency}
           >
             <option value="RWF">RWF</option>
             <option value="USD">USD</option>
           </FormSelect>
+          {selectedSupplier?.defaultCurrency ? (
+            <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+              Locked to supplier default currency.
+            </p>
+          ) : null}
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Total amount
           </label>
           <FormInput
@@ -529,7 +556,7 @@ function CreateBillModal({ open, suppliers, locations, onClose, onSaved }) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Status
           </label>
           <FormSelect
@@ -544,7 +571,7 @@ function CreateBillModal({ open, suppliers, locations, onClose, onSaved }) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Issued date
           </label>
           <FormInput
@@ -557,7 +584,7 @@ function CreateBillModal({ open, suppliers, locations, onClose, onSaved }) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Due date
           </label>
           <FormInput
@@ -570,8 +597,8 @@ function CreateBillModal({ open, suppliers, locations, onClose, onSaved }) {
         </div>
 
         <div className="md:col-span-2">
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
-            Note
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+            Bill note
           </label>
           <textarea
             value={form.note}
@@ -579,7 +606,7 @@ function CreateBillModal({ open, suppliers, locations, onClose, onSaved }) {
               setForm((prev) => ({ ...prev, note: e.target.value }))
             }
             rows={4}
-            className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-100 dark:focus:border-stone-500"
+            className="w-full rounded-[18px] border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-100 dark:focus:border-stone-500"
             placeholder="Bill note"
           />
         </div>
@@ -589,13 +616,13 @@ function CreateBillModal({ open, suppliers, locations, onClose, onSaved }) {
         <button
           type="button"
           onClick={onClose}
-          className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-300 bg-white px-5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
+          className="rounded-[18px] border border-stone-300 px-4 py-2.5 text-sm font-bold text-stone-700 transition hover:bg-stone-50 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
         >
           Cancel
         </button>
 
         <AsyncButton
-          idleText="Create bill"
+          idleText="Create supplier bill"
           loadingText="Creating..."
           successText="Created"
           onClick={handleSave}
@@ -606,36 +633,35 @@ function CreateBillModal({ open, suppliers, locations, onClose, onSaved }) {
 }
 
 function EditBillModal({ open, bill, suppliers, locations, onClose, onSaved }) {
-  const [form, setForm] = useState({
-    supplierId: "",
-    locationId: "",
-    billNo: "",
-    currency: "RWF",
-    totalAmount: "",
-    issuedDate: "",
-    dueDate: "",
-    note: "",
-    status: "OPEN",
-  });
+  if (!open || !bill) return null;
+
+  return (
+    <EditBillModalInner
+      key={`edit-bill-${bill.id}-${bill.updatedAt || ""}`}
+      bill={bill}
+      suppliers={suppliers}
+      locations={locations}
+      onClose={onClose}
+      onSaved={onSaved}
+    />
+  );
+}
+
+function EditBillModalInner({ bill, suppliers, locations, onClose, onSaved }) {
+  const [form, setForm] = useState(() => billEditDefaults(bill));
   const [errorText, setErrorText] = useState("");
 
-  useEffect(() => {
-    if (!bill) return;
-    setForm({
-      supplierId: String(bill.supplierId || ""),
-      locationId: String(bill.locationId || ""),
-      billNo: safe(bill.billNo) || "",
-      currency: normalizeCurrency(bill.currency),
-      totalAmount: String(bill.totalAmount ?? ""),
-      issuedDate: bill.issuedDate ? String(bill.issuedDate).slice(0, 10) : "",
-      dueDate: bill.dueDate ? String(bill.dueDate).slice(0, 10) : "",
-      note: safe(bill.note) || "",
-      status: safe(bill.status) || "OPEN",
-    });
-    setErrorText("");
-  }, [bill]);
+  const selectedSupplier = useMemo(
+    () =>
+      (Array.isArray(suppliers) ? suppliers : []).find(
+        (row) => String(row.id) === String(form.supplierId),
+      ) || null,
+    [suppliers, form.supplierId],
+  );
 
-  if (!open || !bill) return null;
+  const effectiveCurrency = selectedSupplier?.defaultCurrency
+    ? normalizeCurrency(selectedSupplier.defaultCurrency)
+    : normalizeCurrency(form.currency);
 
   async function handleSave() {
     setErrorText("");
@@ -645,7 +671,7 @@ function EditBillModal({ open, bill, suppliers, locations, onClose, onSaved }) {
         supplierId: Number(form.supplierId),
         locationId: Number(form.locationId),
         billNo: form.billNo || undefined,
-        currency: form.currency || undefined,
+        currency: effectiveCurrency || undefined,
         totalAmount: Number(form.totalAmount),
         issuedDate: form.issuedDate || undefined,
         dueDate: form.dueDate || undefined,
@@ -660,21 +686,23 @@ function EditBillModal({ open, bill, suppliers, locations, onClose, onSaved }) {
 
       onSaved?.(result);
     } catch (e) {
-      setErrorText(e?.data?.error || e?.message || "Failed to update bill");
+      setErrorText(
+        e?.data?.error || e?.message || "Failed to update supplier bill",
+      );
     }
   }
 
   return (
     <ModalShell
       title={`Edit supplier bill #${bill.id}`}
-      subtitle="Update branch, supplier, bill details, currency, dates, and amount."
+      subtitle="Update supplier, branch, bill details, dates, and amount."
       onClose={onClose}
     >
       <AlertBox message={errorText} />
 
       <div className="grid gap-4 md:grid-cols-2">
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Supplier
           </label>
           <FormSelect
@@ -693,7 +721,7 @@ function EditBillModal({ open, bill, suppliers, locations, onClose, onSaved }) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Branch
           </label>
           <FormSelect
@@ -712,7 +740,7 @@ function EditBillModal({ open, bill, suppliers, locations, onClose, onSaved }) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Bill number
           </label>
           <FormInput
@@ -720,27 +748,33 @@ function EditBillModal({ open, bill, suppliers, locations, onClose, onSaved }) {
             onChange={(e) =>
               setForm((prev) => ({ ...prev, billNo: e.target.value }))
             }
-            placeholder="INV-001"
+            placeholder="BILL-001"
           />
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Currency
           </label>
           <FormSelect
-            value={form.currency}
+            value={effectiveCurrency}
             onChange={(e) =>
               setForm((prev) => ({ ...prev, currency: e.target.value }))
             }
+            disabled={!!selectedSupplier?.defaultCurrency}
           >
             <option value="RWF">RWF</option>
             <option value="USD">USD</option>
           </FormSelect>
+          {selectedSupplier?.defaultCurrency ? (
+            <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+              Locked to supplier default currency.
+            </p>
+          ) : null}
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Total amount
           </label>
           <FormInput
@@ -754,7 +788,7 @@ function EditBillModal({ open, bill, suppliers, locations, onClose, onSaved }) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Status
           </label>
           <FormSelect
@@ -771,7 +805,7 @@ function EditBillModal({ open, bill, suppliers, locations, onClose, onSaved }) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Issued date
           </label>
           <FormInput
@@ -784,7 +818,7 @@ function EditBillModal({ open, bill, suppliers, locations, onClose, onSaved }) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Due date
           </label>
           <FormInput
@@ -797,8 +831,8 @@ function EditBillModal({ open, bill, suppliers, locations, onClose, onSaved }) {
         </div>
 
         <div className="md:col-span-2">
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
-            Note
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+            Bill note
           </label>
           <textarea
             value={form.note}
@@ -806,7 +840,7 @@ function EditBillModal({ open, bill, suppliers, locations, onClose, onSaved }) {
               setForm((prev) => ({ ...prev, note: e.target.value }))
             }
             rows={4}
-            className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-100 dark:focus:border-stone-500"
+            className="w-full rounded-[18px] border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-100 dark:focus:border-stone-500"
             placeholder="Bill note"
           />
         </div>
@@ -816,13 +850,13 @@ function EditBillModal({ open, bill, suppliers, locations, onClose, onSaved }) {
         <button
           type="button"
           onClick={onClose}
-          className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-300 bg-white px-5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
+          className="rounded-[18px] border border-stone-300 px-4 py-2.5 text-sm font-bold text-stone-700 transition hover:bg-stone-50 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
         >
           Cancel
         </button>
 
         <AsyncButton
-          idleText="Save bill"
+          idleText="Save supplier bill"
           loadingText="Saving..."
           successText="Saved"
           onClick={handleSave}
@@ -833,28 +867,27 @@ function EditBillModal({ open, bill, suppliers, locations, onClose, onSaved }) {
 }
 
 function AddPaymentModal({ open, bill, onClose, onSaved }) {
+  if (!open || !bill) return null;
+
+  return (
+    <AddPaymentModalInner
+      key={`payment-${bill.id}-${bill.balance}-${bill.updatedAt || ""}`}
+      bill={bill}
+      onClose={onClose}
+      onSaved={onSaved}
+    />
+  );
+}
+
+function AddPaymentModalInner({ bill, onClose, onSaved }) {
   const [form, setForm] = useState({
-    amount: "",
+    amount: String(bill.balance ?? ""),
     method: "BANK",
     reference: "",
     note: "",
     paidAt: "",
   });
   const [errorText, setErrorText] = useState("");
-
-  useEffect(() => {
-    if (!bill) return;
-    setForm({
-      amount: String(bill.balance ?? ""),
-      method: "BANK",
-      reference: "",
-      note: "",
-      paidAt: "",
-    });
-    setErrorText("");
-  }, [bill]);
-
-  if (!open || !bill) return null;
 
   async function handleSave() {
     setErrorText("");
@@ -894,7 +927,7 @@ function AddPaymentModal({ open, bill, onClose, onSaved }) {
 
       <div className="grid gap-4 md:grid-cols-2">
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Amount ({normalizeCurrency(bill.currency)})
           </label>
           <FormInput
@@ -908,8 +941,8 @@ function AddPaymentModal({ open, bill, onClose, onSaved }) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
-            Method
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+            Payment method
           </label>
           <FormSelect
             value={form.method}
@@ -926,7 +959,7 @@ function AddPaymentModal({ open, bill, onClose, onSaved }) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Reference
           </label>
           <FormInput
@@ -939,7 +972,7 @@ function AddPaymentModal({ open, bill, onClose, onSaved }) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Paid at
           </label>
           <FormInput
@@ -952,8 +985,8 @@ function AddPaymentModal({ open, bill, onClose, onSaved }) {
         </div>
 
         <div className="md:col-span-2">
-          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
-            Note
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+            Payment note
           </label>
           <textarea
             value={form.note}
@@ -961,7 +994,7 @@ function AddPaymentModal({ open, bill, onClose, onSaved }) {
               setForm((prev) => ({ ...prev, note: e.target.value }))
             }
             rows={4}
-            className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-100 dark:focus:border-stone-500"
+            className="w-full rounded-[18px] border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-100 dark:focus:border-stone-500"
             placeholder="Payment note"
           />
         </div>
@@ -971,7 +1004,7 @@ function AddPaymentModal({ open, bill, onClose, onSaved }) {
         <button
           type="button"
           onClick={onClose}
-          className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-300 bg-white px-5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
+          className="rounded-[18px] border border-stone-300 px-4 py-2.5 text-sm font-bold text-stone-700 transition hover:bg-stone-50 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
         >
           Cancel
         </button>
@@ -988,15 +1021,21 @@ function AddPaymentModal({ open, bill, onClose, onSaved }) {
 }
 
 function VoidBillModal({ open, bill, onClose, onSaved }) {
+  if (!open || !bill) return null;
+
+  return (
+    <VoidBillModalInner
+      key={`void-${bill.id}-${bill.updatedAt || ""}`}
+      bill={bill}
+      onClose={onClose}
+      onSaved={onSaved}
+    />
+  );
+}
+
+function VoidBillModalInner({ bill, onClose, onSaved }) {
   const [reason, setReason] = useState("");
   const [errorText, setErrorText] = useState("");
-
-  useEffect(() => {
-    setReason("");
-    setErrorText("");
-  }, [bill]);
-
-  if (!open || !bill) return null;
 
   async function handleVoid() {
     setErrorText("");
@@ -1011,7 +1050,9 @@ function VoidBillModal({ open, bill, onClose, onSaved }) {
 
       onSaved?.(result);
     } catch (e) {
-      setErrorText(e?.data?.error || e?.message || "Failed to void bill");
+      setErrorText(
+        e?.data?.error || e?.message || "Failed to void supplier bill",
+      );
     }
   }
 
@@ -1023,21 +1064,23 @@ function VoidBillModal({ open, bill, onClose, onSaved }) {
     >
       <AlertBox message={errorText} />
 
-      <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/20 dark:text-rose-200">
-        Bill amount: <strong>{money(bill.totalAmount, bill.currency)}</strong>
-        <br />
-        Paid so far: <strong>{money(bill.paidAmount, bill.currency)}</strong>
-      </div>
+      <Surface className="bg-rose-50 dark:bg-rose-950/20">
+        <div className="text-sm text-rose-800 dark:text-rose-200">
+          Bill amount: <strong>{money(bill.totalAmount, bill.currency)}</strong>
+          <br />
+          Paid so far: <strong>{money(bill.paidAmount, bill.currency)}</strong>
+        </div>
+      </Surface>
 
       <div className="mt-4">
-        <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+        <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
           Reason
         </label>
         <textarea
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           rows={4}
-          className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-100 dark:focus:border-stone-500"
+          className="w-full rounded-[18px] border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-100 dark:focus:border-stone-500"
           placeholder="Why is this bill being voided?"
         />
       </div>
@@ -1046,7 +1089,7 @@ function VoidBillModal({ open, bill, onClose, onSaved }) {
         <button
           type="button"
           onClick={onClose}
-          className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-300 bg-white px-5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
+          className="rounded-[18px] border border-stone-300 px-4 py-2.5 text-sm font-bold text-stone-700 transition hover:bg-stone-50 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
         >
           Cancel
         </button>
@@ -1071,7 +1114,7 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
   const [summary, setSummary] = useState(null);
   const [bills, setBills] = useState([]);
   const [supplierOptions, setSupplierOptions] = useState([]);
-  const [selectedBillId, setSelectedBillId] = useState(null);
+  const [selectedBillId, setSelectedBillId] = useState("");
   const [billDetail, setBillDetail] = useState({
     bill: null,
     items: [],
@@ -1091,10 +1134,9 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
   const [paymentBill, setPaymentBill] = useState(null);
   const [voidBill, setVoidBill] = useState(null);
 
-  const selectedBill =
-    selectedBillId == null
-      ? null
-      : bills.find((row) => String(row.id) === String(selectedBillId)) || null;
+  const selectedBill = !selectedBillId
+    ? null
+    : bills.find((row) => String(row.id) === String(selectedBillId)) || null;
 
   const detailBill = billDetail?.bill || selectedBill || null;
 
@@ -1111,8 +1153,11 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
       const result = await apiFetch(`/owner/suppliers?limit=200`, {
         method: "GET",
       });
+
       setSupplierOptions(
-        Array.isArray(result?.suppliers) ? result.suppliers : [],
+        Array.isArray(result?.suppliers)
+          ? result.suppliers.map(normalizeSupplier).filter(Boolean)
+          : [],
       );
     } catch {
       setSupplierOptions([]);
@@ -1154,14 +1199,18 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
         .filter(Boolean);
 
       setBills(rows);
-      setSelectedBillId((prev) =>
-        prev && rows.some((x) => String(x.id) === String(prev))
-          ? prev
-          : (rows[0]?.id ?? null),
-      );
+      setSelectedBillId((prev) => {
+        const next =
+          prev && rows.some((x) => String(x.id) === String(prev))
+            ? String(prev)
+            : rows[0]?.id != null
+              ? String(rows[0].id)
+              : "";
+        return next;
+      });
     } else {
       setBills([]);
-      setSelectedBillId(null);
+      setSelectedBillId("");
       firstError =
         firstError ||
         listRes.reason?.data?.error ||
@@ -1211,7 +1260,7 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
 
   async function handleActionSaved(actionText, result) {
     setSuccessText(actionText);
-    const nextBillId = result?.bill?.id ?? selectedBillId ?? null;
+    const nextBillId = result?.bill?.id ?? selectedBillId ?? "";
 
     setCreatingBill(false);
     setEditingBill(null);
@@ -1221,8 +1270,8 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
     await loadList();
 
     if (nextBillId) {
-      setSelectedBillId(nextBillId);
-      await loadDetail(nextBillId);
+      setSelectedBillId(String(nextBillId));
+      await loadDetail(String(nextBillId));
     }
 
     setTimeout(() => setSuccessText(""), 2500);
@@ -1230,502 +1279,549 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
 
   const visibleRows = bills.slice(0, visibleCount);
 
+  const headerRight = (
+    <div className="flex flex-wrap items-center gap-2">
+      <AsyncButton
+        variant="secondary"
+        state={loading || detailLoading ? "loading" : "idle"}
+        idleText="Reload"
+        loadingText="Loading..."
+        successText="Done"
+        onClick={async () => {
+          await Promise.all([loadList(), loadDetail(selectedBillId)]);
+        }}
+      />
+
+      <AsyncButton
+        idleText="Create supplier bill"
+        loadingText="Opening..."
+        successText="Ready"
+        onClick={async () => setCreatingBill(true)}
+      />
+    </div>
+  );
+
   return (
-    <div className="space-y-6">
+    <div className="grid gap-4">
       <AlertBox message={errorText} />
       <AlertBox message={successText} tone="success" />
 
-      {loading ? (
-        <SectionCard
-          title="Supplier bills"
-          subtitle="Loading owner-wide supplier bill visibility."
-        >
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
+      <SectionShell
+        title="Supplier bills"
+        hint="Supplier liabilities, due dates, installments, and unpaid balances."
+        right={headerRight}
+      >
+        {loading ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {[1, 2, 3, 4].map((i) => (
               <div
                 key={i}
-                className="h-32 animate-pulse rounded-3xl border border-stone-200 bg-stone-100 dark:border-stone-800 dark:bg-stone-800"
+                className="h-28 animate-pulse rounded-[24px] bg-stone-100 dark:bg-stone-800"
               />
             ))}
           </div>
-        </SectionCard>
-      ) : (
-        <>
-          <SectionCard
-            title="Supplier bills overview"
-            subtitle="Owner-wide procurement liabilities with exact currency visibility."
-          >
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
-              <StatCard
-                label="Bills"
-                value={safeNumber(summary?.billsCount)}
-                sub="Recorded supplier invoices"
-              />
-              <StatCard
-                label="Paid"
-                value={safeNumber(summary?.paidAmount).toLocaleString()}
-                sub="Settled amount across bills"
-              />
-              <StatCard
-                label="Partial"
-                value={safeNumber(summary?.partiallyPaidCount)}
-                sub="Installment invoices"
-              />
-              <StatCard
-                label="Overdue bills"
-                value={safeNumber(summary?.overdueBillsCount)}
-                sub="Invoices past due date"
-              />
-              <StatCard
-                label="Outstanding (RWF)"
-                value={money(summary?.balanceRWF, "RWF")}
-                sub="Open RWF liability"
-              />
-              <StatCard
-                label="Outstanding (USD)"
-                value={money(summary?.balanceUSD, "USD")}
-                sub="Open USD liability"
-              />
-              <StatCard
-                label="Overdue (RWF)"
-                value={money(summary?.overdueRWF, "RWF")}
-                sub="Late RWF bills"
-              />
-              <StatCard
-                label="Overdue (USD)"
-                value={money(summary?.overdueUSD, "USD")}
-                sub="Late USD bills"
-              />
-            </div>
-          </SectionCard>
-
-          <SectionCard
-            title="Bill filters"
-            subtitle="Click any bill card below to open full detail, items, and payments."
-            right={
-              <AsyncButton
-                idleText="Create bill"
-                loadingText="Opening..."
-                successText="Ready"
-                onClick={async () => setCreatingBill(true)}
-              />
-            }
-          >
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <FormInput
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Search supplier, bill number, note, branch"
-              />
-
-              <FormSelect
-                value={locationId}
-                onChange={(e) => setLocationId(e.target.value)}
-              >
-                <option value="">All branches</option>
-                {locationOptions.map((row) => (
-                  <option key={row.id} value={row.id}>
-                    {safe(row.name)}{" "}
-                    {safe(row.code) ? `(${safe(row.code)})` : ""}
-                  </option>
-                ))}
-              </FormSelect>
-
-              <FormSelect
-                value={supplierId}
-                onChange={(e) => setSupplierId(e.target.value)}
-              >
-                <option value="">All suppliers</option>
-                {supplierOptions.map((row) => (
-                  <option key={row.id} value={row.id}>
-                    {safe(row.name)}
-                  </option>
-                ))}
-              </FormSelect>
-
-              <FormSelect
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-              >
-                <option value="">All statuses</option>
-                <option value="DRAFT">Draft</option>
-                <option value="OPEN">Open</option>
-                <option value="PARTIALLY_PAID">Partially paid</option>
-                <option value="PAID">Paid</option>
-                <option value="VOID">Void</option>
-              </FormSelect>
-            </div>
-          </SectionCard>
-
-          <div className="grid gap-6 2xl:grid-cols-[1.1fr_0.9fr]">
-            <SectionCard
-              title="Supplier bills directory"
-              subtitle="Select a bill to inspect details, items, and installment payments."
-            >
-              {bills.length === 0 ? (
-                <EmptyState text="No supplier bills match the current owner filters." />
-              ) : (
-                <div className="space-y-4">
-                  {visibleRows.map((row) => (
-                    <BillCard
-                      key={row.id}
-                      row={row}
-                      active={String(row.id) === String(selectedBillId)}
-                      onSelect={(picked) => setSelectedBillId(picked?.id)}
-                      locations={locationOptions}
-                    />
-                  ))}
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[1.1fr_0.9fr]">
+              <Surface>
+                <div className="text-sm font-black text-stone-950 dark:text-stone-50">
+                  Supplier bills overview
                 </div>
-              )}
 
-              {visibleCount < bills.length ? (
-                <div className="mt-5 flex justify-center">
-                  <button
-                    type="button"
-                    onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
-                    className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-300 bg-white px-5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <MetricCard
+                    label="Supplier bills"
+                    value={safeNumber(summary?.billsCount)}
+                    sub="Recorded supplier invoices"
+                  />
+                  <MetricCard
+                    label="Paid"
+                    value={safeNumber(summary?.paidAmount).toLocaleString()}
+                    sub="Settled amount"
+                  />
+                  <MetricCard
+                    label="Partial"
+                    value={safeNumber(summary?.partiallyPaidCount)}
+                    sub="Installment bills"
+                  />
+                  <MetricCard
+                    label="Overdue bills"
+                    value={safeNumber(summary?.overdueBillsCount)}
+                    sub="Past due date"
+                    tone="danger"
+                  />
+                  <MetricCard
+                    label="Outstanding (RWF)"
+                    value={money(summary?.balanceRWF, "RWF")}
+                    sub="Open RWF liability"
+                  />
+                  <MetricCard
+                    label="Outstanding (USD)"
+                    value={money(summary?.balanceUSD, "USD")}
+                    sub="Open USD liability"
+                  />
+                  <MetricCard
+                    label="Overdue (RWF)"
+                    value={money(summary?.overdueRWF, "RWF")}
+                    sub="Late RWF bills"
+                    tone="danger"
+                  />
+                  <MetricCard
+                    label="Overdue (USD)"
+                    value={money(summary?.overdueUSD, "USD")}
+                    sub="Late USD bills"
+                    tone="danger"
+                  />
+                </div>
+              </Surface>
+
+              <Surface>
+                <div className="text-sm font-black text-stone-950 dark:text-stone-50">
+                  Bill filters
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <FormInput
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Search supplier, bill number, note, branch"
+                  />
+
+                  <FormSelect
+                    value={locationId}
+                    onChange={(e) => setLocationId(e.target.value)}
                   >
-                    Load 20 more
-                  </button>
-                </div>
-              ) : null}
-            </SectionCard>
-
-            {detailBill ? (
-              <SectionCard
-                title="Selected bill detail"
-                subtitle="Focused owner view of supplier liability and bill activity."
-                right={
-                  <div className="flex flex-wrap gap-2">
-                    <AsyncButton
-                      idleText="Edit bill"
-                      loadingText="Opening..."
-                      successText="Ready"
-                      onClick={async () => setEditingBill(detailBill)}
-                      variant="secondary"
-                    />
-
-                    {String(detailBill?.status || "").toUpperCase() !==
-                      "PAID" &&
-                    String(detailBill?.status || "").toUpperCase() !==
-                      "VOID" ? (
-                      <AsyncButton
-                        idleText="Add payment"
-                        loadingText="Opening..."
-                        successText="Ready"
-                        onClick={async () => setPaymentBill(detailBill)}
-                        variant="secondary"
-                      />
-                    ) : null}
-
-                    {Number(detailBill?.paidAmount || 0) <= 0 &&
-                    String(detailBill?.status || "").toUpperCase() !==
-                      "VOID" ? (
-                      <AsyncButton
-                        idleText="Void bill"
-                        loadingText="Opening..."
-                        successText="Ready"
-                        onClick={async () => setVoidBill(detailBill)}
-                        variant="secondary"
-                      />
-                    ) : null}
-                  </div>
-                }
-              >
-                {detailLoading ? (
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    {[1, 2, 3, 4].map((i) => (
-                      <div
-                        key={i}
-                        className="h-28 animate-pulse rounded-3xl border border-stone-200 bg-stone-100 dark:border-stone-800 dark:bg-stone-800"
-                      />
+                    <option value="">All branches</option>
+                    {locationOptions.map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {safe(row.name)}{" "}
+                        {safe(row.code) ? `(${safe(row.code)})` : ""}
+                      </option>
                     ))}
+                  </FormSelect>
+
+                  <FormSelect
+                    value={supplierId}
+                    onChange={(e) => setSupplierId(e.target.value)}
+                  >
+                    <option value="">All suppliers</option>
+                    {supplierOptions.map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {safe(row.name)}
+                      </option>
+                    ))}
+                  </FormSelect>
+
+                  <FormSelect
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                  >
+                    <option value="">All statuses</option>
+                    <option value="DRAFT">Draft</option>
+                    <option value="OPEN">Open</option>
+                    <option value="PARTIALLY_PAID">Partially paid</option>
+                    <option value="PAID">Paid</option>
+                    <option value="VOID">Void</option>
+                  </FormSelect>
+                </div>
+
+                <div className="mt-4 rounded-[22px] border border-stone-200 bg-stone-50 p-3 dark:border-stone-800 dark:bg-stone-950">
+                  <div className="text-[11px] font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+                    Current bill
                   </div>
-                ) : (
-                  <>
-                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                      <StatCard
-                        label="Supplier"
-                        value={
-                          <span className="text-[20px]">
-                            {safe(detailBill?.supplierName) || "-"}
-                          </span>
-                        }
-                        sub={`Bill #${safe(detailBill?.billNo) || safe(detailBill?.id) || "-"}`}
-                      />
 
-                      <StatCard
-                        label="Branch"
-                        value={
-                          <span className="text-[20px]">
-                            {displayBranch(detailBill, locationOptions)}
-                          </span>
-                        }
-                        sub={displayBranchSub(detailBill, locationOptions)}
-                      />
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <FormSelect
+                      value={selectedBillId}
+                      onChange={(e) => setSelectedBillId(e.target.value)}
+                    >
+                      <option value="">Select bill</option>
+                      {bills.map((row) => (
+                        <option key={row.id} value={String(row.id)}>
+                          {`#${safe(row.billNo || row.id)} — ${safe(row.supplierName) || "-"}`}
+                        </option>
+                      ))}
+                    </FormSelect>
 
-                      <StatCard
-                        label={`Balance (${normalizeCurrency(detailBill?.currency)})`}
-                        value={
-                          <span className="text-[20px]">
-                            {money(detailBill?.balance, detailBill?.currency)}
-                          </span>
-                        }
-                        sub="Outstanding amount"
-                      />
+                    <div className="rounded-[18px] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-900 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-100">
+                      Balance:{" "}
+                      <b>
+                        {detailLoading
+                          ? "..."
+                          : detailBill
+                            ? money(detailBill.balance, detailBill.currency)
+                            : "—"}
+                      </b>
+                    </div>
+                  </div>
 
-                      <StatCard
-                        label="Created by"
-                        value={
-                          <span className="text-[20px]">
-                            {displayCreatedBy(detailBill)}
-                          </span>
+                  <div className="mt-2 text-[11px] text-stone-500 dark:text-stone-400">
+                    Status: <b>{detailBill ? safe(detailBill.status) : "—"}</b>{" "}
+                    • Supplier:{" "}
+                    <b>{detailBill ? safe(detailBill.supplierName) : "—"}</b>
+                  </div>
+                </div>
+              </Surface>
+            </div>
+
+            <div className="mt-4 grid gap-4 2xl:grid-cols-[1.1fr_0.9fr]">
+              <Surface>
+                <div className="text-sm font-black text-stone-950 dark:text-stone-50">
+                  Supplier bills directory
+                </div>
+                <div className="mt-1 text-sm text-stone-500 dark:text-stone-400">
+                  Select a bill to inspect details, items, and installment
+                  payments.
+                </div>
+
+                <div className="mt-4">
+                  {bills.length === 0 ? (
+                    <EmptyState text="No supplier bills match the current owner filters." />
+                  ) : (
+                    <div className="grid gap-3">
+                      {visibleRows.map((row) => (
+                        <BillCard
+                          key={row.id}
+                          row={row}
+                          active={String(row.id) === String(selectedBillId)}
+                          onSelect={(picked) =>
+                            setSelectedBillId(String(picked?.id || ""))
+                          }
+                          locations={locationOptions}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {visibleCount < bills.length ? (
+                    <div className="mt-5 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setVisibleCount((prev) => prev + PAGE_SIZE)
                         }
-                        sub={safe(detailBill?.status) || "-"}
-                      />
+                        className="rounded-[18px] border border-stone-300 px-4 py-2.5 text-sm font-bold text-stone-700 transition hover:bg-stone-50 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
+                      >
+                        Load 20 more
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </Surface>
+
+              {detailBill ? (
+                <Surface>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-black text-stone-950 dark:text-stone-50">
+                        Selected supplier bill
+                      </div>
+                      <div className="mt-1 text-sm text-stone-500 dark:text-stone-400">
+                        Focused owner view of supplier liability and bill
+                        activity.
+                      </div>
                     </div>
 
-                    <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                      <div className="rounded-[24px] border border-stone-200 bg-stone-50 p-5 dark:border-stone-800 dark:bg-stone-950">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500 dark:text-stone-400">
+                    <div className="flex flex-wrap gap-2">
+                      <AsyncButton
+                        idleText="Edit supplier bill"
+                        loadingText="Opening..."
+                        successText="Ready"
+                        onClick={async () => setEditingBill(detailBill)}
+                        variant="secondary"
+                      />
+
+                      {String(detailBill?.status || "").toUpperCase() !==
+                        "PAID" &&
+                      String(detailBill?.status || "").toUpperCase() !==
+                        "VOID" ? (
+                        <AsyncButton
+                          idleText="Add payment"
+                          loadingText="Opening..."
+                          successText="Ready"
+                          onClick={async () => setPaymentBill(detailBill)}
+                          variant="secondary"
+                        />
+                      ) : null}
+
+                      {Number(detailBill?.paidAmount || 0) <= 0 &&
+                      String(detailBill?.status || "").toUpperCase() !==
+                        "VOID" ? (
+                        <AsyncButton
+                          idleText="Void bill"
+                          loadingText="Opening..."
+                          successText="Ready"
+                          onClick={async () => setVoidBill(detailBill)}
+                          variant="secondary"
+                        />
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {detailLoading ? (
+                    <div className="mt-4 grid gap-3">
+                      {[1, 2, 3].map((i) => (
+                        <div
+                          key={i}
+                          className="h-24 animate-pulse rounded-[22px] bg-stone-100 dark:bg-stone-800"
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                        <Pill tone={statusTone(detailBill?.status)}>
+                          {safe(detailBill?.status) || "OPEN"}
+                        </Pill>
+                        <Pill tone="neutral">
+                          {normalizeCurrency(detailBill?.currency)}
+                        </Pill>
+                        <Pill
+                          tone={detailBill?.isOverdue ? "danger" : "neutral"}
+                        >
+                          {detailBill?.isOverdue
+                            ? `${safeNumber(detailBill?.daysOverdue)}D OVERDUE`
+                            : "ON TIME"}
+                        </Pill>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <MetricCard
+                          label="Supplier"
+                          value={safe(detailBill?.supplierName) || "-"}
+                          sub={`Bill #${safe(detailBill?.billNo) || safe(detailBill?.id) || "-"}`}
+                        />
+                        <MetricCard
+                          label="Branch"
+                          value={displayBranch(detailBill, locationOptions)}
+                          sub={displayBranchSub(detailBill, locationOptions)}
+                        />
+                        <MetricCard
+                          label={`Balance (${normalizeCurrency(detailBill?.currency)})`}
+                          value={money(
+                            detailBill?.balance,
+                            detailBill?.currency,
+                          )}
+                          sub="Outstanding amount"
+                          tone="danger"
+                        />
+                        <MetricCard
+                          label="Created by"
+                          value={displayCreatedBy(detailBill)}
+                          sub={safe(detailBill?.status) || "-"}
+                        />
+                      </div>
+
+                      <div className="mt-4 grid gap-3">
+                        <div className="text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
                           Bill profile
-                        </p>
-
-                        <div className="mt-4 grid gap-3">
-                          <div className="rounded-2xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900">
-                            <p className="text-xs uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
-                              Note
-                            </p>
-                            <p className="mt-2 text-sm font-semibold text-stone-950 dark:text-stone-50">
-                              {safe(detailBill?.note) || "No note recorded"}
-                            </p>
-                          </div>
-
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <div className="rounded-2xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900">
-                              <p className="text-xs uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
-                                Issued date
-                              </p>
-                              <p className="mt-2 text-sm font-semibold text-stone-950 dark:text-stone-50">
-                                {safeDate(detailBill?.issuedDate)}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900">
-                              <p className="text-xs uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
-                                Due date
-                              </p>
-                              <p className="mt-2 text-sm font-semibold text-stone-950 dark:text-stone-50">
-                                {safeDate(detailBill?.dueDate)}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <div className="rounded-2xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900">
-                              <p className="text-xs uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
-                                Created by
-                              </p>
-                              <p className="mt-2 text-sm font-semibold text-stone-950 dark:text-stone-50">
-                                {displayCreatedBy(detailBill)}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900">
-                              <p className="text-xs uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
-                                Last updated
-                              </p>
-                              <p className="mt-2 text-sm font-semibold text-stone-950 dark:text-stone-50">
-                                {safeDate(detailBill?.updatedAt)}
-                              </p>
-                            </div>
-                          </div>
                         </div>
+
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <InfoTile
+                            label="Issued date"
+                            value={safeDate(detailBill?.issuedDate)}
+                          />
+                          <InfoTile
+                            label="Due date"
+                            value={safeDate(detailBill?.dueDate)}
+                          />
+                          <InfoTile
+                            label="Created by"
+                            value={displayCreatedBy(detailBill)}
+                          />
+                          <InfoTile
+                            label="Last updated"
+                            value={safeDate(detailBill?.updatedAt)}
+                          />
+                        </div>
+
+                        <InfoTile
+                          label="Bill note"
+                          value={safe(detailBill?.note) || "No note recorded"}
+                        />
                       </div>
 
-                      <div className="rounded-[24px] border border-stone-200 bg-stone-50 p-5 dark:border-stone-800 dark:bg-stone-950">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500 dark:text-stone-400">
+                      <div className="mt-4 grid gap-3">
+                        <div className="text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
                           Financial view
-                        </p>
+                        </div>
 
-                        <div className="mt-4 grid gap-3">
-                          <div className="rounded-2xl border border-stone-200 bg-white p-5 dark:border-stone-800 dark:bg-stone-900">
-                            <p className="text-xs uppercase tracking-[0.14em] text-stone-500 dark:text-stone-400">
-                              Total ({normalizeCurrency(detailBill?.currency)})
-                            </p>
-                            <p className="mt-2 text-2xl font-black text-stone-950 dark:text-stone-50">
-                              {money(
-                                detailBill?.totalAmount,
-                                detailBill?.currency,
-                              )}
-                            </p>
-                          </div>
-
-                          <div className="rounded-2xl border border-stone-200 bg-white p-5 dark:border-stone-800 dark:bg-stone-900">
-                            <p className="text-xs uppercase tracking-[0.14em] text-stone-500 dark:text-stone-400">
-                              Paid ({normalizeCurrency(detailBill?.currency)})
-                            </p>
-                            <p className="mt-2 text-2xl font-black text-stone-950 dark:text-stone-50">
-                              {money(
-                                detailBill?.paidAmount,
-                                detailBill?.currency,
-                              )}
-                            </p>
-                          </div>
-
-                          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 dark:border-rose-900/50 dark:bg-rose-950/20">
-                            <p className="text-xs uppercase tracking-[0.14em] text-rose-700 dark:text-rose-300">
-                              Remaining (
-                              {normalizeCurrency(detailBill?.currency)})
-                            </p>
-                            <p className="mt-2 text-2xl font-black text-rose-900 dark:text-rose-100">
-                              {money(detailBill?.balance, detailBill?.currency)}
-                            </p>
-                          </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                          <InfoTile
+                            label={`Total (${normalizeCurrency(detailBill?.currency)})`}
+                            value={money(
+                              detailBill?.totalAmount,
+                              detailBill?.currency,
+                            )}
+                          />
+                          <InfoTile
+                            label={`Paid (${normalizeCurrency(detailBill?.currency)})`}
+                            value={money(
+                              detailBill?.paidAmount,
+                              detailBill?.currency,
+                            )}
+                          />
+                          <InfoTile
+                            label={`Remaining (${normalizeCurrency(detailBill?.currency)})`}
+                            value={money(
+                              detailBill?.balance,
+                              detailBill?.currency,
+                            )}
+                          />
                         </div>
                       </div>
-                    </div>
 
-                    <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                      <div className="rounded-[24px] border border-stone-200 bg-stone-50 p-5 dark:border-stone-800 dark:bg-stone-950">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500 dark:text-stone-400">
-                          Bill items
-                        </p>
-
-                        {(billDetail?.items || []).length === 0 ? (
-                          <div className="mt-4">
-                            <EmptyState text="No bill items found." />
+                      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                        <Surface className="bg-stone-50 dark:bg-stone-950">
+                          <div className="text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+                            Bill items
                           </div>
-                        ) : (
-                          <div className="mt-4 space-y-3">
-                            {(billDetail?.items || []).map((item) => (
-                              <div
-                                key={item.id}
-                                className="rounded-2xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900"
-                              >
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <p className="text-sm font-semibold text-stone-900 dark:text-stone-100">
-                                      {safe(item?.description) || "-"}
-                                    </p>
-                                    <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
-                                      Product ID: {safe(item?.productId) || "-"}
-                                    </p>
-                                  </div>
-                                  <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-700 dark:bg-stone-800 dark:text-stone-300">
-                                    {money(
-                                      item?.lineTotal,
-                                      detailBill?.currency,
-                                    )}
-                                  </span>
-                                </div>
 
-                                <div className="mt-3 grid grid-cols-2 gap-3">
-                                  <div>
-                                    <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
-                                      Qty
-                                    </p>
-                                    <p className="mt-1 text-sm font-bold text-stone-950 dark:text-stone-50">
-                                      {safeNumber(item?.qty)}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
-                                      Unit cost (
-                                      {normalizeCurrency(detailBill?.currency)})
-                                    </p>
-                                    <p className="mt-1 text-sm font-bold text-stone-950 dark:text-stone-50">
+                          {(billDetail?.items || []).length === 0 ? (
+                            <div className="mt-4">
+                              <EmptyState text="No bill items found." />
+                            </div>
+                          ) : (
+                            <div className="mt-4 space-y-3">
+                              {(billDetail?.items || []).map((item) => (
+                                <div
+                                  key={item.id}
+                                  className="rounded-[20px] border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900"
+                                >
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+                                        {safe(item?.description) || "-"}
+                                      </p>
+                                      <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+                                        Product ID:{" "}
+                                        {safe(item?.productId) || "-"}
+                                      </p>
+                                    </div>
+                                    <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-700 dark:bg-stone-800 dark:text-stone-300">
                                       {money(
-                                        item?.unitCost,
+                                        item?.lineTotal,
                                         detailBill?.currency,
                                       )}
-                                    </p>
+                                    </span>
+                                  </div>
+
+                                  <div className="mt-3 grid grid-cols-2 gap-3">
+                                    <div>
+                                      <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+                                        Qty
+                                      </p>
+                                      <p className="mt-1 text-sm font-bold text-stone-950 dark:text-stone-50">
+                                        {safeNumber(item?.qty)}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+                                        Unit cost (
+                                        {normalizeCurrency(
+                                          detailBill?.currency,
+                                        )}
+                                        )
+                                      </p>
+                                      <p className="mt-1 text-sm font-bold text-stone-950 dark:text-stone-50">
+                                        {money(
+                                          item?.unitCost,
+                                          detailBill?.currency,
+                                        )}
+                                      </p>
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
+                          )}
+                        </Surface>
+
+                        <Surface className="bg-stone-50 dark:bg-stone-950">
+                          <div className="text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+                            Bill payments
                           </div>
-                        )}
+
+                          {(billDetail?.payments || []).length === 0 ? (
+                            <div className="mt-4">
+                              <EmptyState text="No payment installments recorded yet." />
+                            </div>
+                          ) : (
+                            <div className="mt-4 space-y-3">
+                              {(billDetail?.payments || []).map((payment) => (
+                                <div
+                                  key={payment.id}
+                                  className="rounded-[20px] border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900"
+                                >
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+                                        {safe(payment?.method) || "-"}
+                                      </p>
+                                      <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+                                        {safeDate(payment?.paidAt)}
+                                      </p>
+                                    </div>
+                                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                                      {money(
+                                        payment?.amount,
+                                        detailBill?.currency,
+                                      )}
+                                    </span>
+                                  </div>
+
+                                  <div className="mt-3 space-y-2 text-sm">
+                                    <div className="flex justify-between gap-4">
+                                      <span className="text-stone-500 dark:text-stone-400">
+                                        Reference
+                                      </span>
+                                      <span className="text-right break-all font-semibold text-stone-900 dark:text-stone-100">
+                                        {safe(payment?.reference) || "-"}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between gap-4">
+                                      <span className="text-stone-500 dark:text-stone-400">
+                                        Created by
+                                      </span>
+                                      <span className="text-right font-semibold text-stone-900 dark:text-stone-100">
+                                        {safe(payment?.createdByName) ||
+                                          (payment?.createdByUserId != null
+                                            ? `User #${payment.createdByUserId}`
+                                            : "-")}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-3 rounded-[16px] border border-stone-200 bg-stone-50 p-3 text-sm text-stone-700 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-300">
+                                    {safe(payment?.note) || "No note recorded."}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </Surface>
                       </div>
-
-                      <div className="rounded-[24px] border border-stone-200 bg-stone-50 p-5 dark:border-stone-800 dark:bg-stone-950">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500 dark:text-stone-400">
-                          Installment payments
-                        </p>
-
-                        {(billDetail?.payments || []).length === 0 ? (
-                          <div className="mt-4">
-                            <EmptyState text="No payment installments recorded yet." />
-                          </div>
-                        ) : (
-                          <div className="mt-4 space-y-3">
-                            {(billDetail?.payments || []).map((payment) => (
-                              <div
-                                key={payment.id}
-                                className="rounded-2xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900"
-                              >
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <p className="text-sm font-semibold text-stone-900 dark:text-stone-100">
-                                      {safe(payment?.method) || "-"}
-                                    </p>
-                                    <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
-                                      {safeDate(payment?.paidAt)}
-                                    </p>
-                                  </div>
-                                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                                    {money(
-                                      payment?.amount,
-                                      detailBill?.currency,
-                                    )}
-                                  </span>
-                                </div>
-
-                                <div className="mt-3 space-y-2 text-sm">
-                                  <div className="flex justify-between gap-4">
-                                    <span className="text-stone-500 dark:text-stone-400">
-                                      Reference
-                                    </span>
-                                    <span className="text-right break-all font-semibold text-stone-900 dark:text-stone-100">
-                                      {safe(payment?.reference) || "-"}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between gap-4">
-                                    <span className="text-stone-500 dark:text-stone-400">
-                                      Created by
-                                    </span>
-                                    <span className="text-right font-semibold text-stone-900 dark:text-stone-100">
-                                      {safe(payment?.createdByName) ||
-                                        (payment?.createdByUserId != null
-                                          ? `User #${payment.createdByUserId}`
-                                          : "-")}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                <div className="mt-3 rounded-xl border border-stone-200 bg-stone-50 p-3 text-sm text-stone-700 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-300">
-                                  {safe(payment?.note) || "No note recorded."}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </SectionCard>
-            ) : (
-              <SectionCard
-                title="Selected bill detail"
-                subtitle="This section appears after a supplier bill is selected."
-              >
-                <EmptyState text="Select a supplier bill above to inspect details and payments." />
-              </SectionCard>
-            )}
-          </div>
-        </>
-      )}
+                    </>
+                  )}
+                </Surface>
+              ) : (
+                <Surface>
+                  <div className="text-sm font-black text-stone-950 dark:text-stone-50">
+                    Selected supplier bill
+                  </div>
+                  <div className="mt-1 text-sm text-stone-500 dark:text-stone-400">
+                    This section appears after a supplier bill is selected.
+                  </div>
+                  <div className="mt-4">
+                    <EmptyState text="Select a supplier bill above to inspect details and payments." />
+                  </div>
+                </Surface>
+              )}
+            </div>
+          </>
+        )}
+      </SectionShell>
 
       <CreateBillModal
         open={creatingBill}
