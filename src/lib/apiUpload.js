@@ -15,6 +15,35 @@ function resolveUrl(path) {
   return `${BASE}${clean.startsWith("/") ? "" : "/"}${clean}`;
 }
 
+function toFileList(files) {
+  return Array.from(files || []).filter(Boolean);
+}
+
+function normalizeUploadedUrls(data) {
+  return Array.isArray(data?.urls) ? data.urls : [];
+}
+
+function buildAttachmentObjects(files, urls) {
+  const len = Math.min(files.length, urls.length);
+  const out = [];
+
+  for (let i = 0; i < len; i += 1) {
+    const file = files[i];
+    const fileUrl = String(urls[i] || "").trim();
+    if (!file || !fileUrl) continue;
+
+    out.push({
+      fileUrl,
+      originalName: file.name || null,
+      contentType: file.type || null,
+      fileSize: Number.isFinite(file.size) ? file.size : null,
+      absoluteUrl: resolveUrl(fileUrl),
+    });
+  }
+
+  return out;
+}
+
 export async function uploadFiles(files) {
   if (!BASE) {
     throw new Error(
@@ -22,9 +51,9 @@ export async function uploadFiles(files) {
     );
   }
 
-  const list = Array.from(files || []).filter(Boolean);
+  const list = toFileList(files);
   if (!list.length) {
-    return { files: [], urls: [] };
+    return { files: [], urls: [], absoluteUrls: [], attachments: [] };
   }
 
   const form = new FormData();
@@ -50,12 +79,21 @@ export async function uploadFiles(files) {
     throw err;
   }
 
-  const urls = Array.isArray(data?.urls) ? data.urls : [];
+  const urls = normalizeUploadedUrls(data);
+  const absoluteUrls = urls.map(resolveUrl);
+  const attachments = buildAttachmentObjects(list, urls);
+
   return {
     ...data,
     urls,
-    absoluteUrls: urls.map(resolveUrl),
+    absoluteUrls,
+    attachments,
   };
+}
+
+export async function uploadExpenseProofs(files) {
+  const result = await uploadFiles(files);
+  return result.attachments;
 }
 
 export function resolveAssetUrl(path) {

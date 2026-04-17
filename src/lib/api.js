@@ -1,14 +1,12 @@
+"use client";
+
 function normalizeBase(v) {
   const s = String(v || "").trim();
   if (!s) return "";
-  return s.replace(/\/+$/, "");
+  return s.endsWith("/") ? s.slice(0, -1) : s;
 }
 
-const BASE = normalizeBase(
-  process.env.NEXT_PUBLIC_API_BASE ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    process.env.NEXT_PUBLIC_API_BASE_URL,
-);
+const BASE = normalizeBase(process.env.NEXT_PUBLIC_API_BASE);
 
 async function readBodySafe(res) {
   const ct = res.headers.get("content-type") || "";
@@ -17,59 +15,74 @@ async function readBodySafe(res) {
     try {
       return await res.json();
     } catch {
-      return null;
+      return {};
     }
   }
 
   try {
     const text = await res.text();
-    return { error: text };
+    return text ? { error: text } : {};
   } catch {
-    return { error: "Failed to read response body" };
+    return {};
   }
+}
+
+function buildQuery(params = {}) {
+  const source =
+    params && typeof params === "object" && !Array.isArray(params)
+      ? params
+      : {};
+
+  const qs = new URLSearchParams();
+
+  Object.entries(source).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    qs.set(key, String(value));
+  });
+
+  const s = qs.toString();
+  return s ? `?${s}` : "";
 }
 
 export async function apiFetch(path, opts = {}) {
   if (!BASE) {
     throw new Error(
-      "Missing NEXT_PUBLIC_API_BASE (or NEXT_PUBLIC_API_URL) in environment. Restart the dev server after setting it.",
+      "Missing NEXT_PUBLIC_API_BASE in .env.local (restart dev server after setting it).",
     );
   }
 
-  const normalizedPath = String(path || "").startsWith("/")
-    ? String(path)
-    : `/${String(path || "")}`;
+  const safeOpts =
+    opts && typeof opts === "object" && !Array.isArray(opts) ? opts : {};
 
-  const url = `${BASE}${normalizedPath}`;
-  const method = String(opts.method || "GET").toUpperCase();
-  const hasBody = opts.body !== undefined && opts.body !== null;
+  const url = `${BASE}${path}`;
+  const hasBody =
+    Object.prototype.hasOwnProperty.call(safeOpts, "body") &&
+    safeOpts.body !== undefined &&
+    safeOpts.body !== null;
 
-  const isFormData =
-    typeof FormData !== "undefined" && opts.body instanceof FormData;
+  const safeHeaders =
+    safeOpts.headers &&
+    typeof safeOpts.headers === "object" &&
+    !Array.isArray(safeOpts.headers)
+      ? safeOpts.headers
+      : {};
 
   const headers = {
-    ...(opts.headers || {}),
-    ...(!isFormData && hasBody ? { "Content-Type": "application/json" } : {}),
+    ...safeHeaders,
+    ...(hasBody ? { "Content-Type": "application/json" } : {}),
   };
 
   const res = await fetch(url, {
-    method,
+    method: safeOpts.method || "GET",
     headers,
     credentials: "include",
-    body: hasBody
-      ? isFormData
-        ? opts.body
-        : JSON.stringify(opts.body)
-      : undefined,
-    cache: "no-store",
+    body: hasBody ? JSON.stringify(safeOpts.body) : undefined,
   });
 
   const data = await readBodySafe(res);
 
   if (!res.ok) {
-    const err = new Error(
-      data?.error || data?.message || `Request failed (${res.status})`,
-    );
+    const err = new Error(data?.error || `Request failed (${res.status})`);
     err.status = res.status;
     err.data = data;
     err.url = url;
@@ -79,4 +92,26 @@ export async function apiFetch(path, opts = {}) {
   return data;
 }
 
-export { BASE as API_BASE };
+/**
+ * Expenses API
+ */
+
+export function listExpenses(params = {}) {
+  return apiFetch(`/cash/expenses${buildQuery(params)}`);
+}
+
+export function createExpense(payload) {
+  return apiFetch("/cash/expenses", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function voidExpense(expenseId, reason) {
+  return apiFetch(`/cash/expenses/${expenseId}/void`, {
+    method: "POST",
+    body: { reason },
+  });
+}
+
+export { buildQuery };

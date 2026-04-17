@@ -11,17 +11,47 @@ import {
   safeDate,
   safeNumber,
 } from "../OwnerShared";
-import { useEffect, useMemo, useState } from "react";
+import { createExpense, listExpenses, voidExpense } from "../../../lib/api";
+import { resolveAssetUrl, uploadExpenseProofs } from "../../../lib/apiUpload";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import AsyncButton from "../../AsyncButton";
-import { apiFetch } from "../../../lib/api";
 
 const PAGE_SIZE = 20;
+const METHOD_OPTIONS = ["CASH", "BANK", "MOMO", "CARD", "OTHER"];
+const STATUS_OPTIONS = ["POSTED", "VOID"];
+const OWNER_EXPENSE_CATEGORY_OPTIONS = [
+  "GENERAL",
+  "TRANSPORT",
+  "UTILITIES",
+  "RENT",
+  "SALARIES",
+  "REPAIRS",
+  "MARKETING",
+  "OFFICE_SUPPLIES",
+  "TAX_ADMIN_FEES",
+  "PETTY_CASH",
+  "OTHER_OPERATING",
+];
 
 function money(v, currency = "RWF") {
   return `${String(currency || "RWF").toUpperCase()} ${safeNumber(
     v,
   ).toLocaleString()}`;
+}
+
+function makeCreateForm() {
+  return {
+    locationId: "",
+    category: "GENERAL",
+    amount: "",
+    expenseDate: "",
+    method: "BANK",
+    payeeName: "",
+    reference: "",
+    note: "",
+    attachments: [],
+  };
 }
 
 function normalizeExpensesResponse(result) {
@@ -32,8 +62,31 @@ function normalizeExpensesResponse(result) {
   return [];
 }
 
+function normalizeAttachment(row, index = 0) {
+  if (!row) return null;
+
+  const fileUrl = safe(row.fileUrl || row.file_url || row.url || row.path);
+  if (!fileUrl) return null;
+
+  return {
+    id: row.id ?? `att-${index}-${fileUrl}`,
+    fileUrl,
+    absoluteUrl: resolveAssetUrl(fileUrl),
+    originalName: row.originalName || row.original_name || "",
+    contentType: row.contentType || row.content_type || "",
+    fileSize:
+      row.fileSize == null && row.file_size == null
+        ? null
+        : Number(row.fileSize ?? row.file_size ?? 0),
+  };
+}
+
 function normalizeExpense(row) {
   if (!row) return null;
+
+  const attachments = Array.isArray(row.attachments)
+    ? row.attachments.map(normalizeAttachment).filter(Boolean)
+    : [];
 
   return {
     id: row.id ?? null,
@@ -46,8 +99,20 @@ function normalizeExpense(row) {
     cashierEmail: row.cashierEmail ?? row.cashier_email ?? "",
     category: row.category ?? "GENERAL",
     amount: Number(row.amount ?? 0),
+    expenseDate: row.expenseDate ?? row.expense_date ?? null,
+    method: row.method ?? "CASH",
+    status: row.status ?? "POSTED",
+    payeeName: row.payeeName ?? row.payee_name ?? "",
     reference: row.reference ?? "",
     note: row.note ?? "",
+    voidedAt: row.voidedAt ?? row.voided_at ?? null,
+    voidedByUserId: row.voidedByUserId ?? row.voided_by_user_id ?? null,
+    voidReason: row.voidReason ?? row.void_reason ?? "",
+    ledgerEntryId: row.ledgerEntryId ?? row.ledger_entry_id ?? null,
+    attachmentCount: Number(
+      row.attachmentCount ?? row.attachment_count ?? attachments.length ?? 0,
+    ),
+    attachments,
     createdAt: row.createdAt ?? row.created_at ?? null,
   };
 }
@@ -73,10 +138,55 @@ function displayCashier(row) {
   return "-";
 }
 
-function categoryTone(category) {
+function statusTone(status, active) {
+  const value = String(status || "")
+    .trim()
+    .toUpperCase();
+
+  if (active) {
+    return "bg-white/10 text-white dark:bg-stone-900/10 dark:text-stone-950";
+  }
+
+  if (value === "VOID") {
+    return "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300";
+  }
+
+  return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300";
+}
+
+function methodTone(method, active) {
+  const value = String(method || "")
+    .trim()
+    .toUpperCase();
+
+  if (active) {
+    return "bg-white/10 text-white dark:bg-stone-900/10 dark:text-stone-950";
+  }
+
+  if (value === "BANK") {
+    return "bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300";
+  }
+  if (value === "MOMO") {
+    return "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-950/40 dark:text-fuchsia-300";
+  }
+  if (value === "CARD") {
+    return "bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300";
+  }
+  if (value === "CASH") {
+    return "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300";
+  }
+
+  return "bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300";
+}
+
+function categoryTone(category, active) {
   const value = String(category || "")
     .trim()
     .toUpperCase();
+
+  if (active) {
+    return "bg-white/10 text-white dark:bg-stone-900/10 dark:text-stone-950";
+  }
 
   if (value.includes("TRANSPORT")) {
     return "bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300";
@@ -90,11 +200,59 @@ function categoryTone(category) {
     return "bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300";
   }
 
-  if (value.includes("STOCK") || value.includes("SUPPLIER")) {
-    return "bg-cyan-100 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300";
+  if (value.includes("MARKETING")) {
+    return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300";
+  }
+
+  if (value.includes("REPAIR")) {
+    return "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300";
   }
 
   return "bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300";
+}
+
+function fileSizeText(v) {
+  const n = Number(v || 0);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  if (n >= 1024) return `${Math.round(n / 1024)} KB`;
+  return `${n} B`;
+}
+
+function AttachmentList({ attachments = [] }) {
+  if (!attachments.length) {
+    return (
+      <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-4 text-sm text-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400">
+        No proof attachments linked.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3">
+      {attachments.map((file) => (
+        <a
+          key={file.id || file.fileUrl}
+          href={file.absoluteUrl || resolveAssetUrl(file.fileUrl)}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-2xl border border-stone-200 bg-white p-4 transition hover:border-stone-300 hover:shadow-sm dark:border-stone-800 dark:bg-stone-900 dark:hover:border-stone-700"
+        >
+          <p className="truncate text-sm font-semibold text-stone-950 dark:text-stone-50">
+            {safe(file.originalName) || safe(file.fileUrl) || "Attachment"}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-500 dark:text-stone-400">
+            {safe(file.contentType) ? (
+              <span>{safe(file.contentType)}</span>
+            ) : null}
+            {fileSizeText(file.fileSize) ? (
+              <span>{fileSizeText(file.fileSize)}</span>
+            ) : null}
+          </div>
+        </a>
+      ))}
+    </div>
+  );
 }
 
 function ExpenseCard({ row, active, onSelect }) {
@@ -117,18 +275,28 @@ function ExpenseCard({ row, active, onSelect }) {
                 Expense #{safe(row?.id) || "-"}
               </h3>
 
-              {active ? (
-                <span className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white dark:border-stone-900/15 dark:bg-stone-900/10 dark:text-stone-950">
-                  Selected
-                </span>
-              ) : null}
+              <span
+                className={
+                  "inline-flex rounded-full px-3 py-1 text-[11px] font-semibold " +
+                  statusTone(row?.status, active)
+                }
+              >
+                {safe(row?.status) || "POSTED"}
+              </span>
 
               <span
                 className={
                   "inline-flex rounded-full px-3 py-1 text-[11px] font-semibold " +
-                  (active
-                    ? "bg-white/10 text-white dark:bg-stone-900/10 dark:text-stone-950"
-                    : categoryTone(row?.category))
+                  methodTone(row?.method, active)
+                }
+              >
+                {safe(row?.method) || "CASH"}
+              </span>
+
+              <span
+                className={
+                  "inline-flex rounded-full px-3 py-1 text-[11px] font-semibold " +
+                  categoryTone(row?.category, active)
                 }
               >
                 {safe(row?.category) || "GENERAL"}
@@ -148,18 +316,16 @@ function ExpenseCard({ row, active, onSelect }) {
                 {displayBranch(row)}
               </p>
               <p className="truncate">
-                <span className="font-medium">Cashier:</span>{" "}
-                {displayCashier(row)}
+                <span className="font-medium">Payee:</span>{" "}
+                {safe(row?.payeeName) || "-"}
               </p>
               <p className="truncate">
-                <span className="font-medium">Session:</span>{" "}
-                {row?.cashSessionId != null
-                  ? `#${safeNumber(row.cashSessionId)}`
-                  : "-"}
+                <span className="font-medium">Expense date:</span>{" "}
+                {safeDate(row?.expenseDate)}
               </p>
               <p className="truncate">
-                <span className="font-medium">Created:</span>{" "}
-                {safeDate(row?.createdAt)}
+                <span className="font-medium">Proofs:</span>{" "}
+                {safeNumber(row?.attachmentCount || 0)}
               </p>
             </div>
           </div>
@@ -193,7 +359,7 @@ function ExpenseCard({ row, active, onSelect }) {
                   : "text-stone-500 dark:text-stone-400")
               }
             >
-              Recorded expense value
+              {safe(row?.reference) || "No reference"}
             </p>
           </div>
         </div>
@@ -257,63 +423,63 @@ function ModalShell({ title, subtitle, onClose, children }) {
 }
 
 function CreateExpenseModal({ open, locations, onClose, onSaved }) {
-  const [form, setForm] = useState({
-    locationId: "",
-    cashSessionId: "",
-    category: "GENERAL",
-    amount: "",
-    reference: "",
-    note: "",
-  });
+  const [form, setForm] = useState(makeCreateForm);
   const [errorText, setErrorText] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState([]);
 
-  useEffect(() => {
-    if (!open) return;
-
-    setForm({
-      locationId: "",
-      cashSessionId: "",
-      category: "GENERAL",
-      amount: "",
-      reference: "",
-      note: "",
-    });
+  const resetModal = useCallback(() => {
+    setForm(makeCreateForm());
     setErrorText("");
-  }, [open]);
+    setUploading(false);
+    setPendingFiles([]);
+  }, []);
 
-  if (!open) return null;
+  function handleClose() {
+    resetModal();
+    onClose?.();
+  }
 
   async function handleSave() {
     setErrorText("");
 
     try {
+      let uploadedAttachments = [];
+
+      if (pendingFiles.length) {
+        setUploading(true);
+        uploadedAttachments = await uploadExpenseProofs(pendingFiles);
+        setUploading(false);
+      }
+
       const payload = {
         locationId: Number(form.locationId),
-        cashSessionId: form.cashSessionId
-          ? Number(form.cashSessionId)
-          : undefined,
         category: String(form.category || "").trim() || "GENERAL",
         amount: Number(form.amount),
+        expenseDate: form.expenseDate || undefined,
+        method: form.method || undefined,
+        payeeName: form.payeeName.trim() || undefined,
         reference: form.reference.trim() || undefined,
         note: form.note.trim() || undefined,
+        attachments: uploadedAttachments,
       };
 
-      const result = await apiFetch("/cash/expenses", {
-        method: "POST",
-        body: payload,
-      });
-
+      const result = await createExpense(payload);
+      resetModal();
       onSaved?.(result);
     } catch (e) {
+      setUploading(false);
       setErrorText(e?.data?.error || e?.message || "Failed to create expense");
     }
   }
 
+  if (!open) return null;
+
   return (
     <ModalShell
-      title="Create expense"
-      subtitle="Owner can record expenses across branches."
-      onClose={onClose}
+      title="Create owner expense"
+      subtitle="Record a controlled operating expense with funding source, payee, and proof."
+      onClose={handleClose}
     >
       <AlertBox message={errorText} />
 
@@ -339,15 +505,14 @@ function CreateExpenseModal({ open, locations, onClose, onSaved }) {
 
         <div>
           <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
-            Cash session ID
+            Expense date
           </label>
           <FormInput
-            type="number"
-            value={form.cashSessionId}
+            type="date"
+            value={form.expenseDate}
             onChange={(e) =>
-              setForm((prev) => ({ ...prev, cashSessionId: e.target.value }))
+              setForm((prev) => ({ ...prev, expenseDate: e.target.value }))
             }
-            placeholder="Optional"
           />
         </div>
 
@@ -355,14 +520,36 @@ function CreateExpenseModal({ open, locations, onClose, onSaved }) {
           <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
             Category
           </label>
-          <FormInput
+          <FormSelect
             value={form.category}
-            maxLength={60}
             onChange={(e) =>
               setForm((prev) => ({ ...prev, category: e.target.value }))
             }
-            placeholder="GENERAL"
-          />
+          >
+            {OWNER_EXPENSE_CATEGORY_OPTIONS.map((item) => (
+              <option key={item} value={item}>
+                {item.replaceAll("_", " ")}
+              </option>
+            ))}
+          </FormSelect>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+            Source of money
+          </label>
+          <FormSelect
+            value={form.method}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, method: e.target.value }))
+            }
+          >
+            {METHOD_OPTIONS.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </FormSelect>
         </div>
 
         <div>
@@ -381,6 +568,20 @@ function CreateExpenseModal({ open, locations, onClose, onSaved }) {
 
         <div>
           <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+            Payee
+          </label>
+          <FormInput
+            value={form.payeeName}
+            maxLength={120}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, payeeName: e.target.value }))
+            }
+            placeholder="Who received this payment?"
+          />
+        </div>
+
+        <div className="md:col-span-2">
+          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
             Reference
           </label>
           <FormInput
@@ -389,13 +590,13 @@ function CreateExpenseModal({ open, locations, onClose, onSaved }) {
             onChange={(e) =>
               setForm((prev) => ({ ...prev, reference: e.target.value }))
             }
-            placeholder="Optional reference"
+            placeholder="Receipt number, transfer reference, invoice code..."
           />
         </div>
 
         <div className="md:col-span-2">
           <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
-            Note
+            Reason / note
           </label>
           <textarea
             value={form.note}
@@ -404,15 +605,56 @@ function CreateExpenseModal({ open, locations, onClose, onSaved }) {
             }
             rows={4}
             className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-100 dark:focus:border-stone-500"
-            placeholder="Optional note"
+            placeholder="Explain why this expense happened"
           />
+        </div>
+
+        <div className="md:col-span-2">
+          <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+            Proof attachments
+          </label>
+          <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 p-4 dark:border-stone-700 dark:bg-stone-950">
+            <input
+              type="file"
+              multiple
+              onChange={(e) =>
+                setPendingFiles(Array.from(e.target.files || []))
+              }
+              className="block w-full text-sm text-stone-700 dark:text-stone-300"
+            />
+            <p className="mt-2 text-xs text-stone-500 dark:text-stone-400">
+              Upload receipts, invoices, transfer slips, or other evidence
+              before saving.
+            </p>
+
+            {pendingFiles.length ? (
+              <div className="mt-3 grid gap-2">
+                {pendingFiles.map((file, idx) => (
+                  <div
+                    key={`${file.name}-${idx}`}
+                    className="rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm dark:border-stone-800 dark:bg-stone-900"
+                  >
+                    <p className="truncate font-medium text-stone-900 dark:text-stone-100">
+                      {file.name}
+                    </p>
+                    <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+                      {file.type || "Unknown type"}{" "}
+                      {fileSizeText(file.size)
+                        ? `• ${fileSizeText(file.size)}`
+                        : ""}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
       <div className="mt-5 flex justify-end gap-3">
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleClose}
           className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-300 bg-white px-5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
         >
           Cancel
@@ -420,9 +662,82 @@ function CreateExpenseModal({ open, locations, onClose, onSaved }) {
 
         <AsyncButton
           idleText="Create expense"
-          loadingText="Creating..."
+          loadingText={uploading ? "Uploading proofs..." : "Creating..."}
           successText="Created"
           onClick={handleSave}
+        />
+      </div>
+    </ModalShell>
+  );
+}
+
+function VoidExpenseModal({ open, expense, onClose, onSaved }) {
+  const [reason, setReason] = useState("");
+  const [errorText, setErrorText] = useState("");
+
+  function handleClose() {
+    setReason("");
+    setErrorText("");
+    onClose?.();
+  }
+
+  async function handleVoid() {
+    setErrorText("");
+    try {
+      const result = await voidExpense(expense?.id, reason);
+      setReason("");
+      onSaved?.(result);
+    } catch (e) {
+      setErrorText(e?.data?.error || e?.message || "Failed to void expense");
+    }
+  }
+
+  if (!open || !expense) return null;
+
+  return (
+    <ModalShell
+      title={`Void expense #${safeNumber(expense?.id)}`}
+      subtitle="This will keep the original record, mark it VOID, and post a reversing money movement."
+      onClose={handleClose}
+    >
+      <AlertBox message={errorText} />
+
+      <div className="rounded-[24px] border border-rose-200 bg-rose-50 p-4 dark:border-rose-900/50 dark:bg-rose-950/20">
+        <p className="text-sm font-semibold text-rose-900 dark:text-rose-100">
+          Amount: {money(expense?.amount, "RWF")}
+        </p>
+        <p className="mt-1 text-sm text-rose-800 dark:text-rose-200">
+          Category: {safe(expense?.category) || "GENERAL"}
+        </p>
+      </div>
+
+      <div className="mt-4">
+        <label className="mb-2 block text-sm font-semibold text-stone-700 dark:text-stone-300">
+          Void reason
+        </label>
+        <textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          rows={4}
+          className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-100 dark:focus:border-stone-500"
+          placeholder="Explain why this expense must be voided"
+        />
+      </div>
+
+      <div className="mt-5 flex justify-end gap-3">
+        <button
+          type="button"
+          onClick={handleClose}
+          className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-300 bg-white px-5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
+        >
+          Cancel
+        </button>
+
+        <AsyncButton
+          idleText="Void expense"
+          loadingText="Voiding..."
+          successText="Voided"
+          onClick={handleVoid}
         />
       </div>
     </ModalShell>
@@ -443,12 +758,13 @@ export default function OwnerExpensesTab({ locations = [] }) {
   const [q, setQ] = useState("");
   const [locationId, setLocationId] = useState("");
   const [category, setCategory] = useState("");
-  const [cashierId, setCashierId] = useState("");
-  const [cashSessionId, setCashSessionId] = useState("");
+  const [method, setMethod] = useState("");
+  const [status, setStatus] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
   const [creatingExpense, setCreatingExpense] = useState(false);
+  const [voidingExpense, setVoidingExpense] = useState(false);
 
   const locationOptions = useMemo(() => {
     return Array.isArray(locations)
@@ -469,62 +785,50 @@ export default function OwnerExpensesTab({ locations = [] }) {
 
     let totalCount = rows.length;
     let totalAmount = 0;
-    let withReferenceCount = 0;
-    let withSessionCount = 0;
+    let voidedCount = 0;
+    let proofBackedCount = 0;
 
-    const categories = new Set();
+    const methods = new Set();
     const branches = new Set();
 
     for (const row of rows) {
       totalAmount += Number(row?.amount || 0);
-
-      if (safe(row?.reference)) withReferenceCount += 1;
-      if (row?.cashSessionId != null) withSessionCount += 1;
-      if (safe(row?.category))
-        categories.add(String(row.category).toUpperCase());
+      if (String(row?.status || "").toUpperCase() === "VOID") voidedCount += 1;
+      if (Number(row?.attachmentCount || 0) > 0) proofBackedCount += 1;
+      if (safe(row?.method)) methods.add(String(row.method).toUpperCase());
       if (row?.locationId != null) branches.add(String(row.locationId));
     }
 
     return {
       totalCount,
       totalAmount,
-      withReferenceCount,
-      withSessionCount,
-      categoryCount: categories.size,
+      voidedCount,
+      proofBackedCount,
+      methodCount: methods.size,
       branchCount: branches.size,
     };
   }, [expenses]);
 
   function buildParams(extra = {}) {
-    const params = new URLSearchParams();
-
-    if (q) params.set("q", q);
-    if (locationId) params.set("locationId", locationId);
-    if (category) params.set("category", category);
-    if (cashierId) params.set("cashierId", cashierId);
-    if (cashSessionId) params.set("cashSessionId", cashSessionId);
-    if (from) params.set("from", from);
-    if (to) params.set("to", to);
-
-    params.set("limit", String(extra.limit || PAGE_SIZE));
-
-    if (extra.cursor) {
-      params.set("cursor", String(extra.cursor));
-    }
-
-    return params;
+    return {
+      q: q || undefined,
+      locationId: locationId || undefined,
+      category: category || undefined,
+      method: method || undefined,
+      status: status || undefined,
+      from: from || undefined,
+      to: to || undefined,
+      limit: extra.limit || PAGE_SIZE,
+      cursor: extra.cursor || undefined,
+    };
   }
 
-  async function loadFirstPage() {
+  const loadFirstPage = useCallback(async () => {
     setLoading(true);
     setErrorText("");
 
     try {
-      const params = buildParams({ limit: PAGE_SIZE });
-      const result = await apiFetch(`/cash/expenses?${params.toString()}`, {
-        method: "GET",
-      });
-
+      const result = await listExpenses(buildParams({ limit: PAGE_SIZE }));
       const rows = normalizeExpensesResponse(result)
         .map(normalizeExpense)
         .filter(Boolean);
@@ -544,19 +848,18 @@ export default function OwnerExpensesTab({ locations = [] }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [q, locationId, category, method, status, from, to]);
 
-  async function loadMore() {
+  const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMore) return;
 
     setLoadingMore(true);
     setErrorText("");
 
     try {
-      const params = buildParams({ limit: PAGE_SIZE, cursor: nextCursor });
-      const result = await apiFetch(`/cash/expenses?${params.toString()}`, {
-        method: "GET",
-      });
+      const result = await listExpenses(
+        buildParams({ limit: PAGE_SIZE, cursor: nextCursor }),
+      );
 
       const rows = normalizeExpensesResponse(result)
         .map(normalizeExpense)
@@ -571,13 +874,23 @@ export default function OwnerExpensesTab({ locations = [] }) {
     } finally {
       setLoadingMore(false);
     }
-  }
+  }, [
+    nextCursor,
+    loadingMore,
+    q,
+    locationId,
+    category,
+    method,
+    status,
+    from,
+    to,
+  ]);
 
   useEffect(() => {
     loadFirstPage();
-  }, [q, locationId, category, cashierId, cashSessionId, from, to]);
+  }, [loadFirstPage]);
 
-  async function handleSaved(result) {
+  async function handleCreated(result) {
     setCreatingExpense(false);
     setSuccessText("Expense created");
 
@@ -586,7 +899,19 @@ export default function OwnerExpensesTab({ locations = [] }) {
     const nextId = result?.expense?.id ?? null;
     if (nextId) setSelectedExpenseId(nextId);
 
-    setTimeout(() => setSuccessText(""), 2500);
+    window.setTimeout(() => setSuccessText(""), 2500);
+  }
+
+  async function handleVoided(result) {
+    setVoidingExpense(false);
+    setSuccessText("Expense voided");
+
+    await loadFirstPage();
+
+    const nextId = result?.expense?.id ?? null;
+    if (nextId) setSelectedExpenseId(nextId);
+
+    window.setTimeout(() => setSuccessText(""), 2500);
   }
 
   return (
@@ -596,8 +921,8 @@ export default function OwnerExpensesTab({ locations = [] }) {
 
       {loading ? (
         <SectionCard
-          title="Expenses"
-          subtitle="Loading owner-wide expense visibility."
+          title="Operating expenses"
+          subtitle="Loading owner-wide operating expense visibility."
         >
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
             {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -612,7 +937,7 @@ export default function OwnerExpensesTab({ locations = [] }) {
         <>
           <SectionCard
             title="Expense overview"
-            subtitle="Owner-wide, cross-branch visibility into recorded expenses."
+            subtitle="Owner-wide operating expense control across branches, money sources, and proof-backed records."
           >
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
               <StatCard
@@ -637,23 +962,23 @@ export default function OwnerExpensesTab({ locations = [] }) {
               />
 
               <StatCard
-                label="Categories"
-                value={safeNumber(overview?.categoryCount)}
-                sub="Distinct categories"
+                label="Methods"
+                value={safeNumber(overview?.methodCount)}
+                sub="Money sources used"
                 valueClassName="text-[17px] leading-tight"
               />
 
               <StatCard
-                label="With reference"
-                value={safeNumber(overview?.withReferenceCount)}
-                sub="Reference captured"
+                label="With proofs"
+                value={safeNumber(overview?.proofBackedCount)}
+                sub="Proof-backed expenses"
                 valueClassName="text-[17px] leading-tight"
               />
 
               <StatCard
-                label="With session"
-                value={safeNumber(overview?.withSessionCount)}
-                sub="Linked cash session"
+                label="Voided"
+                value={safeNumber(overview?.voidedCount)}
+                sub="Voided records"
                 valueClassName="text-[17px] leading-tight"
               />
             </div>
@@ -661,7 +986,7 @@ export default function OwnerExpensesTab({ locations = [] }) {
 
           <SectionCard
             title="Expense filters"
-            subtitle="Search cross-branch by note, reference, category, cashier, session, branch, and date."
+            subtitle="Search owner expenses by branch, category, method, status, and date."
             right={
               <AsyncButton
                 idleText="Create expense"
@@ -675,7 +1000,7 @@ export default function OwnerExpensesTab({ locations = [] }) {
               <FormInput
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Search note, reference, cashier, branch"
+                placeholder="Search note, reference, payee, branch"
               />
 
               <FormSelect
@@ -691,25 +1016,41 @@ export default function OwnerExpensesTab({ locations = [] }) {
                 ))}
               </FormSelect>
 
-              <FormInput
+              <FormSelect
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                placeholder="Category"
-              />
+              >
+                <option value="">All categories</option>
+                {OWNER_EXPENSE_CATEGORY_OPTIONS.map((item) => (
+                  <option key={item} value={item}>
+                    {item.replaceAll("_", " ")}
+                  </option>
+                ))}
+              </FormSelect>
 
-              <FormInput
-                type="number"
-                value={cashierId}
-                onChange={(e) => setCashierId(e.target.value)}
-                placeholder="Cashier ID"
-              />
+              <FormSelect
+                value={method}
+                onChange={(e) => setMethod(e.target.value)}
+              >
+                <option value="">All methods</option>
+                {METHOD_OPTIONS.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </FormSelect>
 
-              <FormInput
-                type="number"
-                value={cashSessionId}
-                onChange={(e) => setCashSessionId(e.target.value)}
-                placeholder="Cash session ID"
-              />
+              <FormSelect
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                <option value="">All statuses</option>
+                {STATUS_OPTIONS.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </FormSelect>
 
               <FormInput
                 type="date"
@@ -728,7 +1069,7 @@ export default function OwnerExpensesTab({ locations = [] }) {
           <div className="grid gap-6 2xl:grid-cols-[1.08fr_0.92fr]">
             <SectionCard
               title="Expense directory"
-              subtitle="Cross-branch expense timeline. Select an expense to inspect its profile."
+              subtitle="Cross-branch operating expense timeline. Select one to inspect money source, proofs, and void state."
             >
               {expenses.length === 0 ? (
                 <EmptyState text="No expenses match the current filters." />
@@ -762,7 +1103,19 @@ export default function OwnerExpensesTab({ locations = [] }) {
             {selectedExpense ? (
               <SectionCard
                 title="Selected expense detail"
-                subtitle="Focused owner view of branch context, cashier, category, and traceability."
+                subtitle="Owner-focused view of method, payee, proofs, traceability, and controlled voiding."
+                right={
+                  String(selectedExpense?.status || "").toUpperCase() ===
+                  "POSTED" ? (
+                    <button
+                      type="button"
+                      onClick={() => setVoidingExpense(true)}
+                      className="inline-flex h-11 items-center justify-center rounded-xl border border-rose-300 bg-white px-5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 dark:border-rose-800 dark:bg-stone-900 dark:text-rose-300 dark:hover:bg-rose-950/20"
+                    >
+                      Void expense
+                    </button>
+                  ) : null
+                }
               >
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <StatCard
@@ -773,26 +1126,30 @@ export default function OwnerExpensesTab({ locations = [] }) {
                   />
 
                   <StatCard
-                    label="Branch"
-                    value={displayBranch(selectedExpense)}
-                    sub={safe(selectedExpense?.locationCode) || "No code"}
+                    label="Status"
+                    value={safe(selectedExpense?.status) || "POSTED"}
+                    sub={
+                      selectedExpense?.voidedAt
+                        ? `Voided ${safeDate(selectedExpense.voidedAt)}`
+                        : "Active expense"
+                    }
                     valueClassName="text-[17px] leading-tight"
                   />
 
                   <StatCard
                     label="Amount"
                     value={money(selectedExpense?.amount, "RWF")}
-                    sub={safe(selectedExpense?.category) || "GENERAL"}
+                    sub={safe(selectedExpense?.method) || "CASH"}
                     valueClassName="text-[17px] leading-tight"
                   />
 
                   <StatCard
-                    label="Cashier"
-                    value={displayCashier(selectedExpense)}
+                    label="Proofs"
+                    value={safeNumber(selectedExpense?.attachmentCount || 0)}
                     sub={
-                      selectedExpense?.cashSessionId != null
-                        ? `Session #${safeNumber(selectedExpense.cashSessionId)}`
-                        : "No session"
+                      selectedExpense?.ledgerEntryId
+                        ? `Ledger #${safeNumber(selectedExpense.ledgerEntryId)}`
+                        : "No ledger id"
                     }
                     valueClassName="text-[17px] leading-tight"
                   />
@@ -817,12 +1174,30 @@ export default function OwnerExpensesTab({ locations = [] }) {
 
                         <div className="rounded-2xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900">
                           <p className="text-xs uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
-                            Cash session
+                            Expense date
                           </p>
                           <p className="mt-2 text-sm font-semibold text-stone-950 dark:text-stone-50">
-                            {selectedExpense?.cashSessionId != null
-                              ? `#${safeNumber(selectedExpense.cashSessionId)}`
-                              : "-"}
+                            {safeDate(selectedExpense?.expenseDate)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-2xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900">
+                          <p className="text-xs uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+                            Branch
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-stone-950 dark:text-stone-50">
+                            {displayBranch(selectedExpense)}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900">
+                          <p className="text-xs uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+                            Payee
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-stone-950 dark:text-stone-50">
+                            {safe(selectedExpense?.payeeName) || "No payee"}
                           </p>
                         </div>
                       </div>
@@ -838,7 +1213,7 @@ export default function OwnerExpensesTab({ locations = [] }) {
 
                       <div className="rounded-2xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900">
                         <p className="text-xs uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
-                          Note
+                          Reason / note
                         </p>
                         <p className="mt-2 break-words text-sm font-semibold text-stone-950 dark:text-stone-50">
                           {safe(selectedExpense?.note) || "No note recorded"}
@@ -855,7 +1230,7 @@ export default function OwnerExpensesTab({ locations = [] }) {
                     <div className="mt-4 grid gap-3">
                       <div className="rounded-2xl border border-stone-200 bg-white p-5 dark:border-stone-800 dark:bg-stone-900">
                         <p className="text-xs uppercase tracking-[0.14em] text-stone-500 dark:text-stone-400">
-                          Cashier
+                          Recorded by
                         </p>
                         <p className="mt-2 text-xl font-black text-stone-950 dark:text-stone-50">
                           {displayCashier(selectedExpense)}
@@ -864,22 +1239,49 @@ export default function OwnerExpensesTab({ locations = [] }) {
 
                       <div className="rounded-2xl border border-stone-200 bg-white p-5 dark:border-stone-800 dark:bg-stone-900">
                         <p className="text-xs uppercase tracking-[0.14em] text-stone-500 dark:text-stone-400">
-                          Branch
+                          Money source
                         </p>
                         <p className="mt-2 text-xl font-black text-stone-950 dark:text-stone-50">
-                          {displayBranch(selectedExpense)}
+                          {safe(selectedExpense?.method) || "-"}
                         </p>
                       </div>
 
-                      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900/50 dark:bg-amber-950/20">
-                        <p className="text-xs uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
-                          Recorded at
-                        </p>
-                        <p className="mt-2 text-xl font-black text-amber-900 dark:text-amber-100">
-                          {safeDate(selectedExpense?.createdAt)}
-                        </p>
-                      </div>
+                      {String(selectedExpense?.status || "").toUpperCase() ===
+                      "VOID" ? (
+                        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 dark:border-rose-900/50 dark:bg-rose-950/20">
+                          <p className="text-xs uppercase tracking-[0.14em] text-rose-700 dark:text-rose-300">
+                            Void details
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-rose-900 dark:text-rose-100">
+                            {safe(selectedExpense?.voidReason) ||
+                              "No reason captured"}
+                          </p>
+                          <p className="mt-2 text-xs text-rose-700 dark:text-rose-300">
+                            Voided at {safeDate(selectedExpense?.voidedAt)}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+                          <p className="text-xs uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
+                            Current state
+                          </p>
+                          <p className="mt-2 text-xl font-black text-emerald-900 dark:text-emerald-100">
+                            Posted
+                          </p>
+                        </div>
+                      )}
                     </div>
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-[24px] border border-stone-200 bg-stone-50 p-5 dark:border-stone-800 dark:bg-stone-950">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500 dark:text-stone-400">
+                    Proof attachments
+                  </p>
+                  <div className="mt-4">
+                    <AttachmentList
+                      attachments={selectedExpense?.attachments || []}
+                    />
                   </div>
                 </div>
               </SectionCard>
@@ -899,7 +1301,14 @@ export default function OwnerExpensesTab({ locations = [] }) {
         open={creatingExpense}
         locations={locationOptions}
         onClose={() => setCreatingExpense(false)}
-        onSaved={handleSaved}
+        onSaved={handleCreated}
+      />
+
+      <VoidExpenseModal
+        open={voidingExpense}
+        expense={selectedExpense}
+        onClose={() => setVoidingExpense(false)}
+        onSaved={handleVoided}
       />
     </div>
   );

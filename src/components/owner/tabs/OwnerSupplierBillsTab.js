@@ -40,6 +40,22 @@ function normalizeBillsResponse(result) {
   return [];
 }
 
+function normalizePurchaseOrdersResponse(result) {
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.purchaseOrders)) return result.purchaseOrders;
+  if (Array.isArray(result?.rows)) return result.rows;
+  if (Array.isArray(result?.data)) return result.data;
+  return [];
+}
+
+function normalizeGoodsReceiptsResponse(result) {
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.goodsReceipts)) return result.goodsReceipts;
+  if (Array.isArray(result?.rows)) return result.rows;
+  if (Array.isArray(result?.data)) return result.data;
+  return [];
+}
+
 function normalizeSupplier(row) {
   if (!row) return null;
 
@@ -51,6 +67,49 @@ function normalizeSupplier(row) {
     ),
     sourceType: row.sourceType ?? row.source_type ?? "LOCAL",
     isActive: row.isActive ?? row.is_active ?? true,
+  };
+}
+
+function normalizePurchaseOrder(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id ?? null,
+    supplierId: row.supplierId ?? row.supplier_id ?? null,
+    supplierName: row.supplierName ?? row.supplier_name ?? "",
+    locationId: row.locationId ?? row.location_id ?? null,
+    locationName: row.locationName ?? row.location_name ?? "",
+    locationCode: row.locationCode ?? row.location_code ?? "",
+    poNo: row.poNo ?? row.po_no ?? "",
+    reference: row.reference ?? "",
+    currency: normalizeCurrency(row.currency),
+    status: row.status ?? "DRAFT",
+    totalAmount: Number(row.totalAmount ?? row.total_amount ?? 0),
+    orderedAt: row.orderedAt ?? row.ordered_at ?? null,
+    expectedAt: row.expectedAt ?? row.expected_at ?? null,
+  };
+}
+
+function normalizeGoodsReceipt(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id ?? null,
+    purchaseOrderId: row.purchaseOrderId ?? row.purchase_order_id ?? null,
+    supplierId: row.supplierId ?? row.supplier_id ?? null,
+    supplierName: row.supplierName ?? row.supplier_name ?? "",
+    locationId: row.locationId ?? row.location_id ?? null,
+    locationName: row.locationName ?? row.location_name ?? "",
+    locationCode: row.locationCode ?? row.location_code ?? "",
+    receiptNo: row.receiptNo ?? row.receipt_no ?? "",
+    reference: row.reference ?? "",
+    note: row.note ?? "",
+    totalAmount: Number(row.totalAmount ?? row.total_amount ?? 0),
+    totalLines: Number(row.totalLines ?? row.total_lines ?? 0),
+    totalUnitsReceived: Number(
+      row.totalUnitsReceived ?? row.total_units_received ?? 0,
+    ),
+    receivedAt: row.receivedAt ?? row.received_at ?? null,
   };
 }
 
@@ -73,6 +132,8 @@ function normalizeBill(row) {
     locationId: row.locationId ?? row.location_id ?? null,
     locationName: row.locationName ?? row.location_name ?? "",
     locationCode: row.locationCode ?? row.location_code ?? "",
+    purchaseOrderId: row.purchaseOrderId ?? row.purchase_order_id ?? null,
+    goodsReceiptId: row.goodsReceiptId ?? row.goods_receipt_id ?? null,
     billNo: row.billNo ?? row.bill_no ?? "",
     currency: normalizeCurrency(row.currency),
     totalAmount,
@@ -106,6 +167,15 @@ function findLocationMeta(locations, locationId) {
   return rows.find((row) => String(row?.id) === String(locationId)) || null;
 }
 
+function findLocationCode(locations = [], locationId = "") {
+  const row =
+    (Array.isArray(locations) ? locations : []).find(
+      (item) => String(item?.id) === String(locationId),
+    ) || null;
+
+  return safe(row?.code) || safe(row?.name) || "BRANCH";
+}
+
 function displayBranch(row, locations = []) {
   if (safe(row?.locationName)) {
     return safe(row?.locationCode)
@@ -127,6 +197,94 @@ function displayBranch(row, locations = []) {
   return "-";
 }
 
+function padBillSequence(value, size = 3) {
+  return String(Math.max(1, Number(value) || 1)).padStart(size, "0");
+}
+
+function formatBillCodeDate(value) {
+  const raw = String(value || "").trim();
+
+  if (raw) {
+    const direct = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (direct) return `${direct[1]}${direct[2]}${direct[3]}`;
+
+    const d = new Date(raw);
+    if (Number.isFinite(d.getTime())) {
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(d.getUTCDate()).padStart(2, "0");
+      return `${y}${m}${day}`;
+    }
+  }
+
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(now.getUTCDate()).padStart(2, "0");
+  return `${y}${m}${day}`;
+}
+
+function formatBillIsoDay(value) {
+  const raw = String(value || "").trim();
+
+  if (raw) {
+    const direct = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (direct) return `${direct[1]}-${direct[2]}-${direct[3]}`;
+
+    const d = new Date(raw);
+    if (Number.isFinite(d.getTime())) {
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(d.getUTCDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    }
+  }
+
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(now.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function makeAutoSupplierBillNo(locationCode, sequence, codeDate) {
+  const branch = safe(locationCode || "BRANCH").toUpperCase();
+  return `BILL-${branch}-${codeDate}-${padBillSequence(sequence, 3)}`;
+}
+
+async function buildNextSupplierBillNo({
+  locationId,
+  locations,
+  issuedDate = "",
+}) {
+  const branchCode = findLocationCode(locations, locationId) || "BRANCH";
+  const isoDay = formatBillIsoDay(issuedDate);
+  const codeDate = formatBillCodeDate(issuedDate);
+
+  const params = new URLSearchParams();
+  params.set("locationId", String(locationId));
+  params.set("from", isoDay);
+  params.set("to", isoDay);
+  params.set("limit", "200");
+
+  const result = await apiFetch(`/owner/supplier-bills?${params.toString()}`, {
+    method: "GET",
+  });
+
+  const rows = normalizeBillsResponse(result)
+    .map(normalizeBill)
+    .filter(Boolean);
+
+  const sameDayRows = rows.filter((row) => {
+    if (String(row?.locationId || "") !== String(locationId)) return false;
+    return formatBillIsoDay(row?.issuedDate) === isoDay;
+  });
+
+  const nextSequence = sameDayRows.length + 1;
+
+  return makeAutoSupplierBillNo(branchCode, nextSequence, codeDate);
+}
+
 function displayBranchSub(row, locations = []) {
   if (safe(row?.locationCode)) return safe(row.locationCode);
 
@@ -140,6 +298,20 @@ function displayCreatedBy(row) {
   if (safe(row?.createdByName)) return safe(row.createdByName);
   if (row?.createdByUserId != null) return `User #${row.createdByUserId}`;
   return "-";
+}
+
+function displayPurchaseOrderRef(row) {
+  if (!row?.purchaseOrderId) return "Not linked";
+  if (safe(row?.poNo)) return `${safe(row.poNo)} (#${row.purchaseOrderId})`;
+  return `PO #${row.purchaseOrderId}`;
+}
+
+function displayGoodsReceiptRef(row) {
+  if (!row?.goodsReceiptId) return "Not linked";
+  if (safe(row?.receiptNo)) {
+    return `${safe(row.receiptNo)} (#${row.goodsReceiptId})`;
+  }
+  return `GR #${row.goodsReceiptId}`;
 }
 
 function Pill({ tone = "neutral", children }) {
@@ -294,6 +466,17 @@ function BillCard({ row, active, onSelect, locations = [] }) {
               {safeDate(row?.dueDate)}
             </b>
           </div>
+
+          <div className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+            PO:{" "}
+            <b className="text-stone-900 dark:text-stone-100">
+              {displayPurchaseOrderRef(row)}
+            </b>{" "}
+            • Goods receipt:{" "}
+            <b className="text-stone-900 dark:text-stone-100">
+              {displayGoodsReceiptRef(row)}
+            </b>
+          </div>
         </div>
 
         <div className="shrink-0 text-right">
@@ -377,6 +560,8 @@ function billCreateDefaults(suppliers) {
   return {
     supplierId: "",
     locationId: "",
+    purchaseOrderId: "",
+    goodsReceiptId: "",
     billNo: "",
     currency: defaultCurrency || "RWF",
     totalAmount: "",
@@ -391,6 +576,8 @@ function billEditDefaults(bill) {
   return {
     supplierId: String(bill?.supplierId || ""),
     locationId: String(bill?.locationId || ""),
+    purchaseOrderId: String(bill?.purchaseOrderId || ""),
+    goodsReceiptId: String(bill?.goodsReceiptId || ""),
     billNo: safe(bill?.billNo) || "",
     currency: normalizeCurrency(bill?.currency),
     totalAmount: String(bill?.totalAmount ?? ""),
@@ -401,7 +588,56 @@ function billEditDefaults(bill) {
   };
 }
 
-function CreateBillModal({ open, suppliers, locations, onClose, onSaved }) {
+function buildPurchaseOrderOptionLabel(row) {
+  const ref = safe(row?.poNo) || `PO #${row?.id}`;
+  const supplier = safe(row?.supplierName) || "Unknown supplier";
+  const branch = safe(row?.locationCode)
+    ? `${safe(row?.locationName)} (${safe(row?.locationCode)})`
+    : safe(row?.locationName) || "-";
+  return `${ref} — ${supplier} — ${branch}`;
+}
+
+function buildGoodsReceiptOptionLabel(row) {
+  if (!row) return "Goods receipt";
+
+  const receiptNo =
+    safe(row.receiptNo) ||
+    safe(row.grnNo) ||
+    safe(row.goodsReceiptNo) ||
+    `GRN-${safeNumber(row.id)}`;
+
+  const supplierName = safe(row.supplierName);
+  const branchName = safe(row.locationName);
+  const branchCode = safe(row.locationCode);
+  const poNo = safe(row.purchaseOrderNo) || safe(row.poNo);
+  const receivedAt =
+    safeDate(row.receivedAt || row.createdAt || row.created_at) || "";
+  const total =
+    row.totalAmount != null
+      ? money(row.totalAmount, row.currency || "RWF")
+      : "";
+
+  const parts = [
+    receiptNo,
+    supplierName,
+    branchName ? `${branchName}${branchCode ? ` (${branchCode})` : ""}` : "",
+    poNo ? `PO ${poNo}` : "",
+    total,
+    receivedAt,
+  ].filter(Boolean);
+
+  return parts.join(" • ");
+}
+
+function CreateBillModal({
+  open,
+  suppliers,
+  locations,
+  purchaseOrders,
+  goodsReceipts,
+  onClose,
+  onSaved,
+}) {
   if (!open) return null;
 
   return (
@@ -409,15 +645,25 @@ function CreateBillModal({ open, suppliers, locations, onClose, onSaved }) {
       key={`create-bill-${suppliers?.length || 0}`}
       suppliers={suppliers}
       locations={locations}
+      purchaseOrders={purchaseOrders}
+      goodsReceipts={goodsReceipts}
       onClose={onClose}
       onSaved={onSaved}
     />
   );
 }
 
-function CreateBillModalInner({ suppliers, locations, onClose, onSaved }) {
+function CreateBillModalInner({
+  suppliers,
+  locations,
+  purchaseOrders,
+  goodsReceipts,
+  onClose,
+  onSaved,
+}) {
   const [form, setForm] = useState(() => billCreateDefaults(suppliers));
   const [errorText, setErrorText] = useState("");
+  const [billNoLoading, setBillNoLoading] = useState(false);
 
   const selectedSupplier = useMemo(
     () =>
@@ -427,23 +673,220 @@ function CreateBillModalInner({ suppliers, locations, onClose, onSaved }) {
     [suppliers, form.supplierId],
   );
 
+  const filteredPurchaseOrders = useMemo(() => {
+    const rows = Array.isArray(purchaseOrders) ? purchaseOrders : [];
+    return rows.filter((row) => {
+      if (
+        form.locationId &&
+        String(row.locationId) !== String(form.locationId)
+      ) {
+        return false;
+      }
+      if (
+        form.supplierId &&
+        String(row.supplierId) !== String(form.supplierId)
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [purchaseOrders, form.locationId, form.supplierId]);
+
+  const filteredGoodsReceipts = useMemo(() => {
+    const rows = Array.isArray(goodsReceipts) ? goodsReceipts : [];
+    return rows.filter((row) => {
+      if (
+        form.locationId &&
+        String(row.locationId) !== String(form.locationId)
+      ) {
+        return false;
+      }
+      if (
+        form.supplierId &&
+        String(row.supplierId) !== String(form.supplierId)
+      ) {
+        return false;
+      }
+      if (
+        form.purchaseOrderId &&
+        String(row.purchaseOrderId) !== String(form.purchaseOrderId)
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [goodsReceipts, form.locationId, form.supplierId, form.purchaseOrderId]);
+
+  const selectedPurchaseOrder = useMemo(
+    () =>
+      filteredPurchaseOrders.find(
+        (row) => String(row.id) === String(form.purchaseOrderId),
+      ) || null,
+    [filteredPurchaseOrders, form.purchaseOrderId],
+  );
+
   const effectiveCurrency = selectedSupplier?.defaultCurrency
     ? normalizeCurrency(selectedSupplier.defaultCurrency)
-    : normalizeCurrency(form.currency);
+    : selectedPurchaseOrder?.currency
+      ? normalizeCurrency(selectedPurchaseOrder.currency)
+      : normalizeCurrency(form.currency);
+
+  function handleSupplierChange(nextSupplierId) {
+    setForm((prev) => ({
+      ...prev,
+      supplierId: nextSupplierId,
+      purchaseOrderId: "",
+      goodsReceiptId: "",
+      billNo: "",
+      totalAmount: "",
+    }));
+  }
+
+  function handleLocationChange(nextLocationId) {
+    setForm((prev) => ({
+      ...prev,
+      locationId: nextLocationId,
+      purchaseOrderId: "",
+      goodsReceiptId: "",
+      billNo: "",
+      totalAmount: "",
+    }));
+  }
+
+  function handlePurchaseOrderChange(nextPurchaseOrderId) {
+    const picked =
+      filteredPurchaseOrders.find(
+        (row) => String(row.id) === String(nextPurchaseOrderId),
+      ) || null;
+
+    setForm((prev) => ({
+      ...prev,
+      purchaseOrderId: nextPurchaseOrderId,
+      goodsReceiptId: "",
+      totalAmount: picked ? String(safeNumber(picked.totalAmount ?? 0)) : "",
+    }));
+  }
+
+  function handleGoodsReceiptChange(nextGoodsReceiptId) {
+    const picked =
+      filteredGoodsReceipts.find(
+        (row) => String(row.id) === String(nextGoodsReceiptId),
+      ) || null;
+
+    setForm((prev) => {
+      const shouldUseGoodsReceiptAmount =
+        picked &&
+        (!prev.purchaseOrderId ||
+          !safe(prev.totalAmount) ||
+          Number(prev.totalAmount) <= 0);
+
+      return {
+        ...prev,
+        goodsReceiptId: nextGoodsReceiptId,
+        totalAmount: shouldUseGoodsReceiptAmount
+          ? String(safeNumber(picked.totalAmount ?? 0))
+          : prev.totalAmount,
+      };
+    });
+  }
+
+  useEffect(() => {
+    let alive = true;
+
+    async function refreshBillNo() {
+      const currentLocationId = String(form.locationId || "").trim();
+      if (!currentLocationId) return;
+
+      setBillNoLoading(true);
+
+      try {
+        const nextBillNo = await buildNextSupplierBillNo({
+          locationId: currentLocationId,
+          locations,
+          issuedDate: form.issuedDate,
+        });
+
+        if (!alive) return;
+
+        setForm((prev) => {
+          if (String(prev.locationId || "").trim() !== currentLocationId) {
+            return prev;
+          }
+
+          return {
+            ...prev,
+            billNo: safe(nextBillNo),
+          };
+        });
+      } catch (e) {
+        if (!alive) return;
+        setErrorText(
+          e?.data?.error ||
+            e?.message ||
+            "Failed to generate supplier bill number.",
+        );
+      } finally {
+        if (alive) setBillNoLoading(false);
+      }
+    }
+
+    refreshBillNo();
+
+    return () => {
+      alive = false;
+    };
+  }, [form.locationId, form.issuedDate, locations]);
 
   async function handleSave() {
     setErrorText("");
 
     try {
+      if (
+        !Number.isFinite(Number(form.supplierId)) ||
+        Number(form.supplierId) <= 0
+      ) {
+        setErrorText("Please choose a supplier.");
+        return;
+      }
+
+      if (
+        !Number.isFinite(Number(form.locationId)) ||
+        Number(form.locationId) <= 0
+      ) {
+        setErrorText("Please choose a branch.");
+        return;
+      }
+
+      if (
+        !Number.isFinite(Number(form.totalAmount)) ||
+        Number(form.totalAmount) <= 0
+      ) {
+        setErrorText("Please enter a valid total amount.");
+        return;
+      }
+
+      if (billNoLoading || !safe(form.billNo)) {
+        setErrorText(
+          "Please wait a moment for the bill number to finish generating.",
+        );
+        return;
+      }
+
       const payload = {
         supplierId: Number(form.supplierId),
         locationId: Number(form.locationId),
-        billNo: form.billNo || undefined,
+        ...(form.purchaseOrderId
+          ? { purchaseOrderId: Number(form.purchaseOrderId) }
+          : {}),
+        ...(form.goodsReceiptId
+          ? { goodsReceiptId: Number(form.goodsReceiptId) }
+          : {}),
+        billNo: safe(form.billNo),
         currency: effectiveCurrency || undefined,
         totalAmount: Number(form.totalAmount),
         issuedDate: form.issuedDate || undefined,
         dueDate: form.dueDate || undefined,
-        note: form.note || undefined,
+        note: safe(form.note) || undefined,
         status: form.status || undefined,
       };
 
@@ -463,7 +906,7 @@ function CreateBillModalInner({ suppliers, locations, onClose, onSaved }) {
   return (
     <ModalShell
       title="Create supplier bill"
-      subtitle="Create a new supplier liability for a specific branch."
+      subtitle="Create a supplier liability and optionally link it to a purchase order or received stock."
       onClose={onClose}
     >
       <AlertBox message={errorText} />
@@ -475,12 +918,10 @@ function CreateBillModalInner({ suppliers, locations, onClose, onSaved }) {
           </label>
           <FormSelect
             value={form.supplierId}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, supplierId: e.target.value }))
-            }
+            onChange={(e) => handleSupplierChange(e.target.value)}
           >
             <option value="">Choose supplier</option>
-            {suppliers.map((row) => (
+            {(Array.isArray(suppliers) ? suppliers : []).map((row) => (
               <option key={row.id} value={row.id}>
                 {safe(row.name)}
               </option>
@@ -494,12 +935,10 @@ function CreateBillModalInner({ suppliers, locations, onClose, onSaved }) {
           </label>
           <FormSelect
             value={form.locationId}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, locationId: e.target.value }))
-            }
+            onChange={(e) => handleLocationChange(e.target.value)}
           >
             <option value="">Choose branch</option>
-            {locations.map((row) => (
+            {(Array.isArray(locations) ? locations : []).map((row) => (
               <option key={row.id} value={row.id}>
                 {safe(row.name)} {safe(row.code) ? `(${safe(row.code)})` : ""}
               </option>
@@ -507,16 +946,57 @@ function CreateBillModalInner({ suppliers, locations, onClose, onSaved }) {
           </FormSelect>
         </div>
 
+        <div className="md:col-span-2">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+            Linked purchase order
+          </label>
+          <FormSelect
+            value={form.purchaseOrderId}
+            onChange={(e) => handlePurchaseOrderChange(e.target.value)}
+          >
+            <option value="">No purchase order link</option>
+            {filteredPurchaseOrders.map((row) => (
+              <option key={row.id} value={row.id}>
+                {buildPurchaseOrderOptionLabel(row)}
+              </option>
+            ))}
+          </FormSelect>
+          <p className="mt-2 text-xs text-stone-500 dark:text-stone-400">
+            When a purchase order is selected, the bill amount is filled
+            automatically from that purchase order total.
+          </p>
+        </div>
+
+        <div className="md:col-span-2">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+            Linked goods receipt
+          </label>
+          <FormSelect
+            value={form.goodsReceiptId}
+            onChange={(e) => handleGoodsReceiptChange(e.target.value)}
+          >
+            <option value="">No goods receipt link</option>
+            {filteredGoodsReceipts.map((row) => (
+              <option key={row.id} value={row.id}>
+                {buildGoodsReceiptOptionLabel(row)}
+              </option>
+            ))}
+          </FormSelect>
+          <p className="mt-2 text-xs text-stone-500 dark:text-stone-400">
+            Shows receipt number, supplier, branch, received date, and total
+            value.
+          </p>
+        </div>
+
         <div>
           <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
-            Bill number
+            Bill number (automatic)
           </label>
           <FormInput
             value={form.billNo}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, billNo: e.target.value }))
-            }
-            placeholder="BILL-001"
+            readOnly
+            disabled
+            placeholder={billNoLoading ? "Generating..." : "Auto-generated"}
           />
         </div>
 
@@ -529,16 +1009,14 @@ function CreateBillModalInner({ suppliers, locations, onClose, onSaved }) {
             onChange={(e) =>
               setForm((prev) => ({ ...prev, currency: e.target.value }))
             }
-            disabled={!!selectedSupplier?.defaultCurrency}
+            disabled={
+              !!selectedSupplier?.defaultCurrency ||
+              !!selectedPurchaseOrder?.currency
+            }
           >
             <option value="RWF">RWF</option>
             <option value="USD">USD</option>
           </FormSelect>
-          {selectedSupplier?.defaultCurrency ? (
-            <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
-              Locked to supplier default currency.
-            </p>
-          ) : null}
         </div>
 
         <div>
@@ -553,6 +1031,10 @@ function CreateBillModalInner({ suppliers, locations, onClose, onSaved }) {
             }
             placeholder="0"
           />
+          <p className="mt-2 text-xs text-stone-500 dark:text-stone-400">
+            Auto-filled from the selected purchase order. You can still adjust
+            it if the supplier bill differs.
+          </p>
         </div>
 
         <div>
@@ -578,7 +1060,11 @@ function CreateBillModalInner({ suppliers, locations, onClose, onSaved }) {
             type="date"
             value={form.issuedDate}
             onChange={(e) =>
-              setForm((prev) => ({ ...prev, issuedDate: e.target.value }))
+              setForm((prev) => ({
+                ...prev,
+                issuedDate: e.target.value,
+                billNo: "",
+              }))
             }
           />
         </div>
@@ -620,10 +1106,9 @@ function CreateBillModalInner({ suppliers, locations, onClose, onSaved }) {
         >
           Cancel
         </button>
-
         <AsyncButton
           idleText="Create supplier bill"
-          loadingText="Creating..."
+          loadingText={billNoLoading ? "Preparing..." : "Creating..."}
           successText="Created"
           onClick={handleSave}
         />
@@ -632,7 +1117,16 @@ function CreateBillModalInner({ suppliers, locations, onClose, onSaved }) {
   );
 }
 
-function EditBillModal({ open, bill, suppliers, locations, onClose, onSaved }) {
+function EditBillModal({
+  open,
+  bill,
+  suppliers,
+  locations,
+  purchaseOrders,
+  goodsReceipts,
+  onClose,
+  onSaved,
+}) {
   if (!open || !bill) return null;
 
   return (
@@ -641,13 +1135,23 @@ function EditBillModal({ open, bill, suppliers, locations, onClose, onSaved }) {
       bill={bill}
       suppliers={suppliers}
       locations={locations}
+      purchaseOrders={purchaseOrders}
+      goodsReceipts={goodsReceipts}
       onClose={onClose}
       onSaved={onSaved}
     />
   );
 }
 
-function EditBillModalInner({ bill, suppliers, locations, onClose, onSaved }) {
+function EditBillModalInner({
+  bill,
+  suppliers,
+  locations,
+  purchaseOrders,
+  goodsReceipts,
+  onClose,
+  onSaved,
+}) {
   const [form, setForm] = useState(() => billEditDefaults(bill));
   const [errorText, setErrorText] = useState("");
 
@@ -659,9 +1163,46 @@ function EditBillModalInner({ bill, suppliers, locations, onClose, onSaved }) {
     [suppliers, form.supplierId],
   );
 
+  const filteredPurchaseOrders = useMemo(() => {
+    const rows = Array.isArray(purchaseOrders) ? purchaseOrders : [];
+    return rows.filter((row) => {
+      if (form.locationId && String(row.locationId) !== String(form.locationId))
+        return false;
+      if (form.supplierId && String(row.supplierId) !== String(form.supplierId))
+        return false;
+      return true;
+    });
+  }, [purchaseOrders, form.locationId, form.supplierId]);
+
+  const filteredGoodsReceipts = useMemo(() => {
+    const rows = Array.isArray(goodsReceipts) ? goodsReceipts : [];
+    return rows.filter((row) => {
+      if (form.locationId && String(row.locationId) !== String(form.locationId))
+        return false;
+      if (form.supplierId && String(row.supplierId) !== String(form.supplierId))
+        return false;
+      if (
+        form.purchaseOrderId &&
+        String(row.purchaseOrderId) !== String(form.purchaseOrderId)
+      )
+        return false;
+      return true;
+    });
+  }, [goodsReceipts, form.locationId, form.supplierId, form.purchaseOrderId]);
+
+  const selectedPurchaseOrder = useMemo(
+    () =>
+      filteredPurchaseOrders.find(
+        (row) => String(row.id) === String(form.purchaseOrderId),
+      ) || null,
+    [filteredPurchaseOrders, form.purchaseOrderId],
+  );
+
   const effectiveCurrency = selectedSupplier?.defaultCurrency
     ? normalizeCurrency(selectedSupplier.defaultCurrency)
-    : normalizeCurrency(form.currency);
+    : selectedPurchaseOrder?.currency
+      ? normalizeCurrency(selectedPurchaseOrder.currency)
+      : normalizeCurrency(form.currency);
 
   async function handleSave() {
     setErrorText("");
@@ -670,6 +1211,12 @@ function EditBillModalInner({ bill, suppliers, locations, onClose, onSaved }) {
       const payload = {
         supplierId: Number(form.supplierId),
         locationId: Number(form.locationId),
+        purchaseOrderId: form.purchaseOrderId
+          ? Number(form.purchaseOrderId)
+          : null,
+        goodsReceiptId: form.goodsReceiptId
+          ? Number(form.goodsReceiptId)
+          : null,
         billNo: form.billNo || undefined,
         currency: effectiveCurrency || undefined,
         totalAmount: Number(form.totalAmount),
@@ -695,7 +1242,7 @@ function EditBillModalInner({ bill, suppliers, locations, onClose, onSaved }) {
   return (
     <ModalShell
       title={`Edit supplier bill #${bill.id}`}
-      subtitle="Update supplier, branch, bill details, dates, and amount."
+      subtitle="Update supplier, branch, linked procurement records, bill details, dates, and amount."
       onClose={onClose}
     >
       <AlertBox message={errorText} />
@@ -708,7 +1255,12 @@ function EditBillModalInner({ bill, suppliers, locations, onClose, onSaved }) {
           <FormSelect
             value={form.supplierId}
             onChange={(e) =>
-              setForm((prev) => ({ ...prev, supplierId: e.target.value }))
+              setForm((prev) => ({
+                ...prev,
+                supplierId: e.target.value,
+                purchaseOrderId: "",
+                goodsReceiptId: "",
+              }))
             }
           >
             <option value="">Choose supplier</option>
@@ -727,13 +1279,60 @@ function EditBillModalInner({ bill, suppliers, locations, onClose, onSaved }) {
           <FormSelect
             value={form.locationId}
             onChange={(e) =>
-              setForm((prev) => ({ ...prev, locationId: e.target.value }))
+              setForm((prev) => ({
+                ...prev,
+                locationId: e.target.value,
+                purchaseOrderId: "",
+                goodsReceiptId: "",
+              }))
             }
           >
             <option value="">Choose branch</option>
             {locations.map((row) => (
               <option key={row.id} value={row.id}>
                 {safe(row.name)} {safe(row.code) ? `(${safe(row.code)})` : ""}
+              </option>
+            ))}
+          </FormSelect>
+        </div>
+
+        <div className="md:col-span-2">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+            Linked purchase order
+          </label>
+          <FormSelect
+            value={form.purchaseOrderId}
+            onChange={(e) =>
+              setForm((prev) => ({
+                ...prev,
+                purchaseOrderId: e.target.value,
+                goodsReceiptId: "",
+              }))
+            }
+          >
+            <option value="">No purchase order link</option>
+            {filteredPurchaseOrders.map((row) => (
+              <option key={row.id} value={row.id}>
+                {buildPurchaseOrderOptionLabel(row)}
+              </option>
+            ))}
+          </FormSelect>
+        </div>
+
+        <div className="md:col-span-2">
+          <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+            Linked goods receipt
+          </label>
+          <FormSelect
+            value={form.goodsReceiptId}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, goodsReceiptId: e.target.value }))
+            }
+          >
+            <option value="">No goods receipt link</option>
+            {filteredGoodsReceipts.map((row) => (
+              <option key={row.id} value={row.id}>
+                {buildGoodsReceiptOptionLabel(row)}
               </option>
             ))}
           </FormSelect>
@@ -748,7 +1347,6 @@ function EditBillModalInner({ bill, suppliers, locations, onClose, onSaved }) {
             onChange={(e) =>
               setForm((prev) => ({ ...prev, billNo: e.target.value }))
             }
-            placeholder="BILL-001"
           />
         </div>
 
@@ -761,16 +1359,14 @@ function EditBillModalInner({ bill, suppliers, locations, onClose, onSaved }) {
             onChange={(e) =>
               setForm((prev) => ({ ...prev, currency: e.target.value }))
             }
-            disabled={!!selectedSupplier?.defaultCurrency}
+            disabled={
+              !!selectedSupplier?.defaultCurrency ||
+              !!selectedPurchaseOrder?.currency
+            }
           >
             <option value="RWF">RWF</option>
             <option value="USD">USD</option>
           </FormSelect>
-          {selectedSupplier?.defaultCurrency ? (
-            <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
-              Locked to supplier default currency.
-            </p>
-          ) : null}
         </div>
 
         <div>
@@ -783,7 +1379,6 @@ function EditBillModalInner({ bill, suppliers, locations, onClose, onSaved }) {
             onChange={(e) =>
               setForm((prev) => ({ ...prev, totalAmount: e.target.value }))
             }
-            placeholder="0"
           />
         </div>
 
@@ -841,7 +1436,6 @@ function EditBillModalInner({ bill, suppliers, locations, onClose, onSaved }) {
             }
             rows={4}
             className="w-full rounded-[18px] border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-100 dark:focus:border-stone-500"
-            placeholder="Bill note"
           />
         </div>
       </div>
@@ -854,7 +1448,6 @@ function EditBillModalInner({ bill, suppliers, locations, onClose, onSaved }) {
         >
           Cancel
         </button>
-
         <AsyncButton
           idleText="Save supplier bill"
           loadingText="Saving..."
@@ -879,26 +1472,73 @@ function AddPaymentModal({ open, bill, onClose, onSaved }) {
   );
 }
 
+function buildSupplierBillPaymentReference(bill, method = "BANK") {
+  const methodCode = String(method || "BANK")
+    .trim()
+    .toUpperCase();
+  const billNo = safe(bill?.billNo);
+  const purchaseOrderNo = safe(bill?.purchaseOrderNo);
+  const goodsReceiptNo = safe(bill?.goodsReceiptNo);
+  const billId = safeNumber(bill?.id);
+
+  const base =
+    billNo ||
+    purchaseOrderNo ||
+    goodsReceiptNo ||
+    `BILL-${String(billId || "").trim() || "NA"}`;
+
+  return `${methodCode}-PAY-${base}`;
+}
+
 function AddPaymentModalInner({ bill, onClose, onSaved }) {
+  const initialMethod = "BANK";
+  const initialAutoReference = buildSupplierBillPaymentReference(
+    bill,
+    initialMethod,
+  );
+
   const [form, setForm] = useState({
-    amount: String(bill.balance ?? ""),
-    method: "BANK",
-    reference: "",
+    amount: String(bill?.balance ?? ""),
+    method: initialMethod,
+    reference: initialAutoReference,
     note: "",
     paidAt: "",
   });
   const [errorText, setErrorText] = useState("");
 
+  function handleMethodChange(nextMethod) {
+    setForm((prev) => {
+      const previousAuto = buildSupplierBillPaymentReference(bill, prev.method);
+      const nextAuto = buildSupplierBillPaymentReference(bill, nextMethod);
+
+      const shouldReplaceReference =
+        !safe(prev.reference) || safe(prev.reference) === previousAuto;
+
+      return {
+        ...prev,
+        method: nextMethod,
+        reference: shouldReplaceReference ? nextAuto : prev.reference,
+      };
+    });
+  }
+
   async function handleSave() {
     setErrorText("");
 
     try {
+      const amount = Number(form.amount);
+
+      if (!Number.isFinite(amount) || amount <= 0) {
+        setErrorText("Please enter a valid payment amount.");
+        return;
+      }
+
       const payload = {
-        amount: Number(form.amount),
+        amount,
         method: form.method,
-        reference: form.reference || undefined,
-        note: form.note || undefined,
-        paidAt: form.paidAt || undefined,
+        reference: safe(form.reference) || undefined,
+        note: safe(form.note) || undefined,
+        paidAt: safe(form.paidAt) || undefined,
       };
 
       const result = await apiFetch(
@@ -936,7 +1576,6 @@ function AddPaymentModalInner({ bill, onClose, onSaved }) {
             onChange={(e) =>
               setForm((prev) => ({ ...prev, amount: e.target.value }))
             }
-            placeholder="0"
           />
         </div>
 
@@ -946,9 +1585,7 @@ function AddPaymentModalInner({ bill, onClose, onSaved }) {
           </label>
           <FormSelect
             value={form.method}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, method: e.target.value }))
-            }
+            onChange={(e) => handleMethodChange(e.target.value)}
           >
             <option value="BANK">Bank</option>
             <option value="CASH">Cash</option>
@@ -967,20 +1604,25 @@ function AddPaymentModalInner({ bill, onClose, onSaved }) {
             onChange={(e) =>
               setForm((prev) => ({ ...prev, reference: e.target.value }))
             }
-            placeholder="Transaction reference"
+            placeholder={buildSupplierBillPaymentReference(bill, form.method)}
           />
+          <p className="mt-2 text-xs text-stone-500 dark:text-stone-400">
+            Auto-filled from this bill and payment method. Replace it with the
+            real bank, MoMo, cash, or card reference if needed.
+          </p>
         </div>
 
         <div>
           <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
             Paid at
           </label>
-          <FormInput
+          <input
             type="datetime-local"
             value={form.paidAt}
             onChange={(e) =>
               setForm((prev) => ({ ...prev, paidAt: e.target.value }))
             }
+            className="w-full rounded-[18px] border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-100 dark:focus:border-stone-500"
           />
         </div>
 
@@ -1008,7 +1650,6 @@ function AddPaymentModalInner({ bill, onClose, onSaved }) {
         >
           Cancel
         </button>
-
         <AsyncButton
           idleText="Record payment"
           loadingText="Recording..."
@@ -1034,18 +1675,14 @@ function VoidBillModal({ open, bill, onClose, onSaved }) {
 }
 
 function VoidBillModalInner({ bill, onClose, onSaved }) {
-  const [reason, setReason] = useState("");
   const [errorText, setErrorText] = useState("");
 
   async function handleVoid() {
     setErrorText("");
 
     try {
-      const result = await apiFetch(`/owner/supplier-bills/${bill.id}/void`, {
-        method: "POST",
-        body: {
-          reason: reason || undefined,
-        },
+      const result = await apiFetch(`/supplier-bills/${bill.id}`, {
+        method: "DELETE",
       });
 
       onSaved?.(result);
@@ -1063,7 +1700,6 @@ function VoidBillModalInner({ bill, onClose, onSaved }) {
       onClose={onClose}
     >
       <AlertBox message={errorText} />
-
       <Surface className="bg-rose-50 dark:bg-rose-950/20">
         <div className="text-sm text-rose-800 dark:text-rose-200">
           Bill amount: <strong>{money(bill.totalAmount, bill.currency)}</strong>
@@ -1071,20 +1707,6 @@ function VoidBillModalInner({ bill, onClose, onSaved }) {
           Paid so far: <strong>{money(bill.paidAmount, bill.currency)}</strong>
         </div>
       </Surface>
-
-      <div className="mt-4">
-        <label className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
-          Reason
-        </label>
-        <textarea
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          rows={4}
-          className="w-full rounded-[18px] border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-100 dark:focus:border-stone-500"
-          placeholder="Why is this bill being voided?"
-        />
-      </div>
-
       <div className="mt-5 flex justify-end gap-3">
         <button
           type="button"
@@ -1093,7 +1715,6 @@ function VoidBillModalInner({ bill, onClose, onSaved }) {
         >
           Cancel
         </button>
-
         <AsyncButton
           idleText="Void bill"
           loadingText="Voiding..."
@@ -1114,6 +1735,8 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
   const [summary, setSummary] = useState(null);
   const [bills, setBills] = useState([]);
   const [supplierOptions, setSupplierOptions] = useState([]);
+  const [purchaseOrderOptions, setPurchaseOrderOptions] = useState([]);
+  const [goodsReceiptOptions, setGoodsReceiptOptions] = useState([]);
   const [selectedBillId, setSelectedBillId] = useState("");
   const [billDetail, setBillDetail] = useState({
     bill: null,
@@ -1140,6 +1763,24 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
 
   const detailBill = billDetail?.bill || selectedBill || null;
 
+  const linkedPurchaseOrder = useMemo(() => {
+    if (!detailBill?.purchaseOrderId) return null;
+    return (
+      purchaseOrderOptions.find(
+        (row) => String(row.id) === String(detailBill.purchaseOrderId),
+      ) || null
+    );
+  }, [detailBill?.purchaseOrderId, purchaseOrderOptions]);
+
+  const linkedGoodsReceipt = useMemo(() => {
+    if (!detailBill?.goodsReceiptId) return null;
+    return (
+      goodsReceiptOptions.find(
+        (row) => String(row.id) === String(detailBill.goodsReceiptId),
+      ) || null
+    );
+  }, [detailBill?.goodsReceiptId, goodsReceiptOptions]);
+
   const locationOptions = useMemo(() => {
     return Array.isArray(locations)
       ? locations.filter(
@@ -1153,7 +1794,6 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
       const result = await apiFetch(`/owner/suppliers?limit=200`, {
         method: "GET",
       });
-
       setSupplierOptions(
         Array.isArray(result?.suppliers)
           ? result.suppliers.map(normalizeSupplier).filter(Boolean)
@@ -1161,6 +1801,36 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
       );
     } catch {
       setSupplierOptions([]);
+    }
+  }
+
+  async function loadPurchaseOrderOptions() {
+    try {
+      const result = await apiFetch(`/purchase-orders?limit=200`, {
+        method: "GET",
+      });
+      setPurchaseOrderOptions(
+        normalizePurchaseOrdersResponse(result)
+          .map(normalizePurchaseOrder)
+          .filter(Boolean),
+      );
+    } catch {
+      setPurchaseOrderOptions([]);
+    }
+  }
+
+  async function loadGoodsReceiptOptions() {
+    try {
+      const result = await apiFetch(`/goods-receipts?limit=200`, {
+        method: "GET",
+      });
+      setGoodsReceiptOptions(
+        normalizeGoodsReceiptsResponse(result)
+          .map(normalizeGoodsReceipt)
+          .filter(Boolean),
+      );
+    } catch {
+      setGoodsReceiptOptions([]);
     }
   }
 
@@ -1177,8 +1847,8 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
     const suffix = params.toString() ? `?${params.toString()}` : "";
 
     const [summaryRes, listRes] = await Promise.allSettled([
-      apiFetch(`/owner/supplier-bills/summary${suffix}`, { method: "GET" }),
-      apiFetch(`/owner/supplier-bills${suffix}`, { method: "GET" }),
+      apiFetch(`/supplier-bills/summary${suffix}`, { method: "GET" }),
+      apiFetch(`/supplier-bills${suffix}`, { method: "GET" }),
     ]);
 
     let firstError = "";
@@ -1197,7 +1867,6 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
       const rows = normalizeBillsResponse(listRes.value)
         .map(normalizeBill)
         .filter(Boolean);
-
       setBills(rows);
       setSelectedBillId((prev) => {
         const next =
@@ -1230,10 +1899,7 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
 
     setDetailLoading(true);
     try {
-      const result = await apiFetch(`/owner/supplier-bills/${id}`, {
-        method: "GET",
-      });
-
+      const result = await apiFetch(`/supplier-bills/${id}`, { method: "GET" });
       setBillDetail(normalizeBillDetail(result));
     } catch {
       setBillDetail({ bill: null, items: [], payments: [] });
@@ -1244,6 +1910,8 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
 
   useEffect(() => {
     loadSupplierOptions();
+    loadPurchaseOrderOptions();
+    loadGoodsReceiptOptions();
   }, []);
 
   useEffect(() => {
@@ -1267,7 +1935,11 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
     setPaymentBill(null);
     setVoidBill(null);
 
-    await loadList();
+    await Promise.all([
+      loadList(),
+      loadPurchaseOrderOptions(),
+      loadGoodsReceiptOptions(),
+    ]);
 
     if (nextBillId) {
       setSelectedBillId(String(nextBillId));
@@ -1288,7 +1960,13 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
         loadingText="Loading..."
         successText="Done"
         onClick={async () => {
-          await Promise.all([loadList(), loadDetail(selectedBillId)]);
+          await Promise.all([
+            loadSupplierOptions(),
+            loadPurchaseOrderOptions(),
+            loadGoodsReceiptOptions(),
+            loadList(),
+            loadDetail(selectedBillId),
+          ]);
         }}
       />
 
@@ -1308,7 +1986,7 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
 
       <SectionShell
         title="Supplier bills"
-        hint="Supplier liabilities, due dates, installments, and unpaid balances."
+        hint="Supplier liabilities, due dates, installments, procurement linkage, and unpaid balances."
         right={headerRight}
       >
         {loading ? (
@@ -1351,25 +2029,14 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
                     tone="danger"
                   />
                   <MetricCard
-                    label="Outstanding (RWF)"
-                    value={money(summary?.balanceRWF, "RWF")}
-                    sub="Open RWF liability"
+                    label="Outstanding"
+                    value={safeNumber(summary?.balance).toLocaleString()}
+                    sub="Open liability total"
                   />
                   <MetricCard
-                    label="Outstanding (USD)"
-                    value={money(summary?.balanceUSD, "USD")}
-                    sub="Open USD liability"
-                  />
-                  <MetricCard
-                    label="Overdue (RWF)"
-                    value={money(summary?.overdueRWF, "RWF")}
-                    sub="Late RWF bills"
-                    tone="danger"
-                  />
-                  <MetricCard
-                    label="Overdue (USD)"
-                    value={money(summary?.overdueUSD, "USD")}
-                    sub="Late USD bills"
+                    label="Overdue amount"
+                    value={safeNumber(summary?.overdueAmount).toLocaleString()}
+                    sub="Late unpaid amount"
                     tone="danger"
                   />
                 </div>
@@ -1384,9 +2051,8 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
                   <FormInput
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder="Search supplier, bill number, note, branch"
+                    placeholder="Search supplier, bill number, note, PO, GR"
                   />
-
                   <FormSelect
                     value={locationId}
                     onChange={(e) => setLocationId(e.target.value)}
@@ -1399,7 +2065,6 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
                       </option>
                     ))}
                   </FormSelect>
-
                   <FormSelect
                     value={supplierId}
                     onChange={(e) => setSupplierId(e.target.value)}
@@ -1411,7 +2076,6 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
                       </option>
                     ))}
                   </FormSelect>
-
                   <FormSelect
                     value={status}
                     onChange={(e) => setStatus(e.target.value)}
@@ -1470,8 +2134,8 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
                   Supplier bills directory
                 </div>
                 <div className="mt-1 text-sm text-stone-500 dark:text-stone-400">
-                  Select a bill to inspect details, items, and installment
-                  payments.
+                  Select a bill to inspect details, linked procurement records,
+                  items, and installment payments.
                 </div>
 
                 <div className="mt-4">
@@ -1517,8 +2181,8 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
                         Selected supplier bill
                       </div>
                       <div className="mt-1 text-sm text-stone-500 dark:text-stone-400">
-                        Focused owner view of supplier liability and bill
-                        activity.
+                        Focused owner view of supplier liability, procurement
+                        linkage, and bill activity.
                       </div>
                     </div>
 
@@ -1610,6 +2274,35 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
                           value={displayCreatedBy(detailBill)}
                           sub={safe(detailBill?.status) || "-"}
                         />
+                      </div>
+
+                      <div className="mt-4 grid gap-3">
+                        <div className="text-xs font-black uppercase tracking-[0.12em] text-stone-500 dark:text-stone-400">
+                          Procurement linkage
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <InfoTile
+                            label="Purchase order link"
+                            value={
+                              linkedPurchaseOrder
+                                ? buildPurchaseOrderOptionLabel(
+                                    linkedPurchaseOrder,
+                                  )
+                                : displayPurchaseOrderRef(detailBill)
+                            }
+                          />
+                          <InfoTile
+                            label="Goods receipt link"
+                            value={
+                              linkedGoodsReceipt
+                                ? buildGoodsReceiptOptionLabel(
+                                    linkedGoodsReceipt,
+                                  )
+                                : displayGoodsReceiptRef(detailBill)
+                            }
+                          />
+                        </div>
                       </div>
 
                       <div className="mt-4 grid gap-3">
@@ -1780,17 +2473,6 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
                                         {safe(payment?.reference) || "-"}
                                       </span>
                                     </div>
-                                    <div className="flex justify-between gap-4">
-                                      <span className="text-stone-500 dark:text-stone-400">
-                                        Created by
-                                      </span>
-                                      <span className="text-right font-semibold text-stone-900 dark:text-stone-100">
-                                        {safe(payment?.createdByName) ||
-                                          (payment?.createdByUserId != null
-                                            ? `User #${payment.createdByUserId}`
-                                            : "-")}
-                                      </span>
-                                    </div>
                                   </div>
 
                                   <div className="mt-3 rounded-[16px] border border-stone-200 bg-stone-50 p-3 text-sm text-stone-700 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-300">
@@ -1827,6 +2509,8 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
         open={creatingBill}
         suppliers={supplierOptions}
         locations={locationOptions}
+        purchaseOrders={purchaseOrderOptions}
+        goodsReceipts={goodsReceiptOptions}
         onClose={() => setCreatingBill(false)}
         onSaved={(result) => handleActionSaved("Supplier bill created", result)}
       />
@@ -1836,6 +2520,8 @@ export default function OwnerSupplierBillsTab({ locations = [] }) {
         bill={editingBill}
         suppliers={supplierOptions}
         locations={locationOptions}
+        purchaseOrders={purchaseOrderOptions}
+        goodsReceipts={goodsReceiptOptions}
         onClose={() => setEditingBill(null)}
         onSaved={(result) => handleActionSaved("Supplier bill updated", result)}
       />
